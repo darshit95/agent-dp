@@ -21,8 +21,8 @@ The first start installs/checks Python 3.12, Homebrew, Caddy, Ollama, Python dep
 ### Windows
 
 ```powershell
-git clone https://github.com/YOUR_USERNAME/pockettrack.git
-cd pockettrack
+git clone https://github.com/darshit95/agent-dp.git
+cd agent-dp/pocket-track
 .\start.ps1
 ```
 
