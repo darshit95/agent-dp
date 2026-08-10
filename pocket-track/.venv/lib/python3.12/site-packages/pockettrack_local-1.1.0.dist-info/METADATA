@@ -23,6 +23,33 @@ Dynamic: license-file
 
 Private spending, budgeting, and net-worth tracking for **macOS and Windows**.
 
+## Pre-requisites
+
+- This application can be run on **macOS or Windows**.
+- A **Plaid Trial account** is required to connect real bank and credit-card accounts.
+
+#### Get Plaid Production Client ID and Secret
+
+1. Go to [https://plaid.com/](https://plaid.com/) and create a free developer account.
+
+2. Verify your email address and log in to the **Plaid Dashboard**.
+
+3. From the Plaid Dashboard, select **Start Trial** or **Apply for Trial Plan**.
+
+4. Complete the Trial Plan application.
+
+   > The Plaid Trial Plan allows you to connect real financial institutions using the **Production environment**. Trial accounts are limited to a small number of Production Items.
+
+5. After Trial access is enabled, navigate to:
+
+   **Plaid Dashboard → Developers → API Keys**
+
+6. Copy the following credentials:
+
+   - **Client ID**
+   - **Production Secret**
+
+
 ## Start
 
 PocketTrack currently supports **macOS and Windows only**.
