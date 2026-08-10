@@ -158,3 +158,15 @@ def test_liability_inline_fields_save_without_edit_drawer(create_user):
         .institution
         == "New Bank"
     )
+
+
+def test_networth_page_always_exposes_csrf_token(create_user):
+    """Net Worth must always render a CSRF token, even with no assets/liabilities."""
+    _settings, _store, _db, _services, client = create_user
+
+    page = client.get("/net-worth")
+
+    assert page.status_code == 200
+    assert 'name="csrf_token"' in page.text
+    assert 'value="' in page.text
+

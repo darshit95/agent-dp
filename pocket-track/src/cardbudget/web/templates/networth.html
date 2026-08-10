@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Net Worth · PocketTrack{% endblock %}
 {% block content %}
+<!-- PocketTrack Net Worth CSRF sentinel -->
+<form hidden aria-hidden="true" class="networth-csrf-sentinel">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+</form>
+
 <header class="topbar simple-topbar">
   <a class="brand-lockup" href="/"><span class="brand-mark"><svg class="icon"><use href="#i-wallet"></use></svg></span><span><strong>PocketTrack</strong><small>Net worth</small></span></a>
   <div class="top-actions"><a class="nav-icon active-nav" href="/net-worth" aria-label="Net worth" title="Net worth"><svg class="icon"><use href="#i-chart"></use></svg></a><a class="nav-icon" href="/settings" aria-label="Settings" title="Settings"><svg class="icon"><use href="#i-settings"></use></svg></a></div>
