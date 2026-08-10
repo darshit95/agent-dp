@@ -173,14 +173,93 @@ sudo dscacheutil -flushcache >/dev/null 2>&1 || true
 sudo killall -HUP mDNSResponder >/dev/null 2>&1 || true
 
 say "Starting PocketTrack application"
-if [[ -f "$APP_PID_FILE" ]] && kill -0 "$(cat "$APP_PID_FILE")" 2>/dev/null; then
-  echo "PocketTrack app is already running (PID $(cat "$APP_PID_FILE"))."
-else
+
+# ----------------------------------------------------------------
+# Protect against stale/missing PID files and port-8000 collisions.
+#
+# A previous PocketTrack process may still be running even when the
+# runtime PID file was deleted or became stale. Detect the real
+# listener before trying to launch another server.
+# ----------------------------------------------------------------
+
+get_port_8000_pid() {
+  lsof -tiTCP:8000 -sTCP:LISTEN 2>/dev/null | head -1 || true
+}
+
+is_pockettrack_pid() {
+  local pid="$1"
+  [[ -n "$pid" ]] || return 1
+
+  local command_line
+  command_line="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+
+  [[ -n "$command_line" ]] || return 1
+
+  # Accept PocketTrack launched directly from this repository's venv,
+  # or Python/Uvicorn whose command line clearly references PocketTrack.
+  [[ "$command_line" == *"$VENV_POCKETTRACK"* ]] && return 0
+  [[ "$command_line" == *"$ROOT"* && "$command_line" == *"pockettrack"* ]] && return 0
+  [[ "$command_line" == *"$ROOT"* && "$command_line" == *"uvicorn"* ]] && return 0
+
+  return 1
+}
+
+APP_ALREADY_RUNNING=0
+
+# First validate the PID file, if one exists.
+if [[ -f "$APP_PID_FILE" ]]; then
+  EXISTING_PID="$(cat "$APP_PID_FILE" 2>/dev/null || true)"
+
+  if [[ -n "$EXISTING_PID" ]] && kill -0 "$EXISTING_PID" 2>/dev/null; then
+    if is_pockettrack_pid "$EXISTING_PID"; then
+      echo "PocketTrack app is already running (PID $EXISTING_PID)."
+      APP_ALREADY_RUNNING=1
+    else
+      echo "Warning: stale PocketTrack PID file points to unrelated PID $EXISTING_PID."
+      rm -f "$APP_PID_FILE"
+    fi
+  else
+    echo "Removing stale PocketTrack PID file."
+    rm -f "$APP_PID_FILE"
+  fi
+fi
+
+# If the PID file did not identify PocketTrack, inspect the actual port.
+if [[ "$APP_ALREADY_RUNNING" -eq 0 ]]; then
+  PORT_PID="$(get_port_8000_pid)"
+
+  if [[ -n "$PORT_PID" ]]; then
+    if is_pockettrack_pid "$PORT_PID"; then
+      echo "PocketTrack is already listening on port 8000 (PID $PORT_PID)."
+      echo "$PORT_PID" > "$APP_PID_FILE"
+      chmod 600 "$APP_PID_FILE"
+      echo "Repaired PocketTrack PID file."
+      APP_ALREADY_RUNNING=1
+    else
+      echo
+      echo "ERROR: Port 8000 is already being used by another process:" >&2
+      ps -p "$PORT_PID" -o pid=,command= >&2 || true
+      echo >&2
+      echo "PocketTrack will not terminate unrelated processes automatically." >&2
+      echo "Stop the process using port 8000 and rerun ./start.sh." >&2
+      exit 1
+    fi
+  fi
+fi
+
+if [[ "$APP_ALREADY_RUNNING" -eq 0 ]]; then
   rm -f "$APP_PID_FILE"
+
   export POCKETTRACK_PLAID_ENVIRONMENT="${POCKETTRACK_PLAID_ENVIRONMENT:-production}"
   export POCKETTRACK_OLLAMA_MODEL="$MODEL"
+
   nohup "$VENV_POCKETTRACK" serve >"$APP_LOG" 2>&1 &
-  echo $! > "$APP_PID_FILE"
+  NEW_PID=$!
+
+  echo "$NEW_PID" > "$APP_PID_FILE"
+  chmod 600 "$APP_PID_FILE"
+
+  echo "Started PocketTrack backend (PID $NEW_PID)."
 fi
 
 for _ in {1..30}; do
