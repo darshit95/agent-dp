@@ -21,24 +21,48 @@ Dynamic: license-file
 
 # PocketTrack
 
-Private spending, budgeting, and net-worth tracking on your Mac.
+Private spending, budgeting, and net-worth tracking for **macOS and Windows**.
 
 ## Start
 
+PocketTrack currently supports **macOS and Windows only**.
+
+### macOS
+
 ```bash
-git clone https://github.com/YOUR_USERNAME/pockettrack.git
-cd pockettrack
+git clone https://github.com/darshit95/agent-dp.git
+cd agent-dp/pocket-track
 ./start.sh
 ```
 
 Open **https://my-pocket-track**.
 
-The first start installs/checks Python 3.12, Caddy, Ollama, Python dependencies, the local AI model, runs the test suite, configures local HTTPS, installs the daily 8 AM refresh job, and starts PocketTrack in the background. macOS may ask for your administrator password while configuring the local hostname/HTTPS certificate.
+The first start installs/checks Python 3.12, Homebrew, Caddy, Ollama, Python dependencies, the local AI model, runs the test suite, configures the private local hostname and locally trusted HTTPS, installs the daily 8 AM refresh job, and starts PocketTrack in the background. macOS may ask for your administrator password while configuring the local hostname/HTTPS certificate.
+
+### Windows
+
+```powershell
+git clone https://github.com/darshit95/agent-dp.git
+cd agent-dp/pocket-track
+.\start.ps1
+```
+
+Open **http://127.0.0.1:8000**.
+
+The first start installs/checks Python 3.12, Ollama, Python dependencies, the local AI model, runs the test suite, installs the daily refresh job, and starts PocketTrack in the background.
 
 ## Stop
 
+### macOS
+
 ```bash
 ./stop.sh
+```
+
+### Windows
+
+```powershell
+.\stop.ps1
 ```
 
 ---
@@ -80,8 +104,8 @@ PocketTrack is a local-first personal finance application with two focused workf
 PocketTrack is intentionally designed as a single-user local application.
 
 - The FastAPI backend binds only to `127.0.0.1`.
-- `https://my-pocket-track` resolves only to your own Mac through `/etc/hosts`.
-- Caddy is bound to loopback and provides locally trusted HTTPS on port 443.
+- On macOS, `https://my-pocket-track` resolves only to your own Mac through `/etc/hosts`.
+- On macOS, Caddy is bound to loopback and provides locally trusted HTTPS on port 443. Windows currently uses `http://127.0.0.1:8000`.
 - The application database is encrypted with SQLCipher.
 - Plaid credentials, access tokens, database keys, and session secrets are stored in the operating-system Keychain rather than source code or the database.
 - Passwords are hashed with Argon2id.
@@ -100,12 +124,12 @@ Do not commit backups or secrets. The included `.gitignore` excludes the common 
 
 ## First-time application setup
 
-After `./start.sh` completes:
+After the platform-specific startup script completes:
 
-1. Open **https://my-pocket-track**.
+1. On macOS, open **https://my-pocket-track**. On Windows, open **http://127.0.0.1:8000**.
 2. Create your PocketTrack username and password.
 3. Open **Settings**.
-4. Enter your own Plaid Production Client ID and Production Secret once. They are stored in macOS Keychain.
+4. Enter your own Plaid Production Client ID and Production Secret once. They are stored in the operating-system credential store.
 5. Click **Connect bank** and complete Plaid Link.
 6. Expand each connected bank and enable only the credit cards you want PocketTrack to track.
 7. Click **Sync now**, or wait for the next daily refresh.
@@ -122,7 +146,7 @@ For development, set:
 export POCKETTRACK_PLAID_ENVIRONMENT=sandbox
 ```
 
-For normal use, `start.sh` defaults to Production.
+For normal use, the startup scripts default to Production.
 
 ## Historical month import
 
@@ -142,7 +166,7 @@ pockettrack daily-sync
 
 ## Daily scheduler
 
-`start.sh` installs the default 8 AM macOS `launchd` job. To inspect or change it:
+On macOS, `start.sh` installs the default 8 AM `launchd` job. On Windows, `start.ps1` installs the Windows equivalent. To inspect or change it on macOS:
 
 ```bash
 source .venv/bin/activate
@@ -194,15 +218,18 @@ The helper uses GitHub CLI, initializes Git if necessary, commits the current so
 
 ## Local URL vs public hosting
 
-**https://my-pocket-track** is a private local hostname configured by `start.sh`; it is not a public internet domain. This is intentional because PocketTrack handles sensitive financial data.
+On macOS, **https://my-pocket-track** is a private local hostname configured by `start.sh`; it is not a public internet domain. On Windows, PocketTrack currently uses **http://127.0.0.1:8000**. This is intentional because PocketTrack handles sensitive financial data.
 
 Publishing the source to GitHub lets other people install their own local instance. Making a centrally hosted public PocketTrack service would require a different multi-user security architecture, public DNS, trusted public TLS, server-side secret isolation, user tenancy, and a deployment platform; the local build should not simply be exposed to the internet.
 
 ## Requirements
 
+- PocketTrack currently supports **macOS and Windows only**.
 - macOS 14 Sonoma or newer is recommended.
+- Windows 10 or Windows 11 is recommended.
 - Network access is needed during first setup to install dependencies, download the Ollama model, and communicate with Plaid.
-- The startup script can install Homebrew if it is missing and may prompt for administrator privileges.
+- On macOS, the startup script can install Homebrew and may prompt for administrator privileges.
+- On Windows, `winget` is recommended so `start.ps1` can install Python 3.12 and Ollama automatically.
 
 ## Development
 
