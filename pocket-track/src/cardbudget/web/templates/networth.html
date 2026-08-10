@@ -1,6 +1,21 @@
 {% extends "base.html" %}
 {% block title %}Net Worth · PocketTrack{% endblock %}
 {% block content %}
+{# PocketTrack compact money formatter #}
+{% macro compact_money(cents) -%}
+  {% set amount = cents / 100 %}
+  {% set absolute = amount|abs %}
+  {%- if absolute >= 1000000000 -%}
+    ${{ "%.2f"|format(amount / 1000000000) }}B
+  {%- elif absolute >= 1000000 -%}
+    ${{ "%.2f"|format(amount / 1000000) }}M
+  {%- elif absolute >= 1000 -%}
+    ${{ "%.1f"|format(amount / 1000) }}K
+  {%- else -%}
+    ${{ "%.2f"|format(amount) }}
+  {%- endif -%}
+{%- endmacro %}
+
 <!-- PocketTrack Net Worth CSRF sentinel -->
 <form hidden aria-hidden="true" class="networth-csrf-sentinel">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -20,21 +35,21 @@
     class="nw-final-total {% if net_worth_cents < 0 %}negative{% endif %}"
     data-net-worth-total
   >
-    ${{ "%.2f"|format(net_worth_cents / 100) }}
+    {{ compact_money(net_worth_cents) }}
   </div>
 
   <div class="nw-final-subtotals">
     <span>
       Assets
       <strong data-assets-total>
-        ${{ "%.2f"|format(total_assets_cents / 100) }}
+        {{ compact_money(total_assets_cents) }}
       </strong>
     </span>
 
     <span>
       Liabilities
       <strong data-liabilities-total>
-        ${{ "%.2f"|format(total_liabilities_cents / 100) }}
+        {{ compact_money(total_liabilities_cents) }}
       </strong>
     </span>
   </div>
@@ -362,7 +377,7 @@
 
       <div class="donut-center">
         <strong data-allocation-total>
-          ${{ "%.0f"|format(total_assets_cents / 100) }}
+          {{ compact_money(total_assets_cents) }}
         </strong>
         <span>assets</span>
       </div>
@@ -387,7 +402,7 @@
         </span>
 
         <strong data-legend-value>
-          ${{ "%.2f"|format(seg.value_cents / 100) }}
+          {{ compact_money(seg.value_cents) }}
         </strong>
 
         <span
