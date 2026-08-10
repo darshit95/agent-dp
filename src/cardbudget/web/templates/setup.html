@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Set up PocketTrack{% endblock %}
+{% block content %}
+<section class="auth-card">
+  <div class="auth-brand"><span class="brand-mark"><svg class="icon"><use href="#i-wallet"></use></svg></span><strong>PocketTrack</strong></div>
+  <h1>Create your local account</h1>
+  <p class="muted">This account protects the local web app. Your database encryption key is generated separately and stored in the OS keychain.</p>
+  {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+  <form method="post" action="/setup" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Username
+      <input name="username" value="{{ username or '' }}" minlength="3" maxlength="64" autocomplete="username" required autofocus>
+    </label>
+    <label>Password
+      <input type="password" name="password" minlength="{{ minimum_password_length }}" maxlength="256" autocomplete="new-password" required>
+    </label>
+    <label>Confirm password
+      <input type="password" name="confirm_password" minlength="{{ minimum_password_length }}" maxlength="256" autocomplete="new-password" required>
+    </label>
+    <button type="submit">Create secure account</button>
+  </form>
+  <p class="fine-print">Minimum password length: {{ minimum_password_length }} characters.</p>
+</section>
+{% endblock %}

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Settings · PocketTrack{% endblock %}
+{% block head %}<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>{% endblock %}
+{% block content %}
+<header class="topbar">
+  <a class="brand-lockup" href="/"><span class="brand-mark"><svg class="icon"><use href="#i-wallet"></use></svg></span><span><strong>PocketTrack</strong><small>Settings</small></span></a>
+  <div class="top-actions"><a class="nav-icon" href="/" aria-label="Home" title="Home"><svg class="icon"><use href="#i-home"></use></svg></a><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="secondary small icon-button"><svg class="mini-icon"><use href="#i-log-out"></use></svg> Log out</button></form></div>
+</header>
+{% if message %}<div class="alert success compact-alert">{{ message }}</div>{% endif %}
+
+
+
+<section class="panel settings-section">
+  <div class="section-heading">
+    <div class="heading-with-icon"><span class="section-icon"><svg class="icon"><use href="#i-bank"></use></svg></span><div><h2>Bank connections</h2><p class="muted compact">Plaid {{ plaid_environment|capitalize }} · card names come directly from your financial institution.</p></div></div>
+    <button id="plaid-connect" class="small icon-button" type="button" {% if not credentials_configured %}disabled{% endif %}><svg class="mini-icon"><use href="#i-plus"></use></svg> Connect bank</button>
+  </div>
+
+  <details class="credential-details" {% if not credentials_configured %}open{% endif %}>
+    <summary>Plaid credentials</summary>
+    <form class="credential-form" method="post" action="/settings/plaid/credentials"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Client ID<input name="client_id" autocomplete="off" required placeholder="Enter once"></label><label>{{ plaid_environment|capitalize }} secret<input name="secret" type="password" autocomplete="new-password" required placeholder="Stored in Keychain"></label><button class="small" type="submit">Save securely</button></form>
+  </details>
+
+  <div class="bank-list">
+    {% for group in bank_groups %}
+    <details class="bank-card" {% if group.item.last_sync_error_code %}open{% endif %}>
+      <summary>
+        <div class="bank-summary"><span class="bank-avatar"><svg class="icon"><use href="#i-bank"></use></svg></span><div><strong>{{ group.item.institution_name or "Connected institution" }}</strong><small>{{ group.tracked_count }} of {{ group.cards|length }} credit card{% if group.cards|length != 1 %}s{% endif %} tracked{% if group.item.last_synced_at %} · synced {{ group.item.last_synced_at.strftime('%b %-d, %-I:%M %p') }}{% endif %}</small>{% if group.item.last_sync_error_code %}<span class="connection-error">Needs attention: {{ group.item.last_sync_error_code }}</span>{% endif %}</div></div>
+        <svg class="chevron-icon"><use href="#i-chevron"></use></svg>
+      </summary>
+      <div class="bank-card-body">
+        {% if group.cards %}
+        <div class="connected-card-list">
+          {% for card in group.cards %}
+          <form class="track-card-form" data-account-id="{{ card.account_id }}" method="post" action="/settings/accounts/{{ card.account_id }}/enabled">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="connected-card-main"><span class="card-avatar"><svg class="icon"><use href="#i-card"></use></svg></span><div><strong>{{ card.official_name or card.name }}</strong><small>{{ card.subtype or "Credit card" }} · •••• {{ card.mask or "—" }}</small></div></div>
+            <label class="toggle-line"><span class="toggle-copy">Track</span><input type="checkbox" name="enabled" {% if card.enabled %}checked{% endif %} aria-label="Track {{ card.official_name or card.name }}"><span class="toggle"></span><span class="track-status" aria-live="polite"></span></label>
+          </form>
+          {% endfor %}
+        </div>
+        {% else %}<div class="empty-state slim-empty">No credit-card accounts were returned by this connection.</div>{% endif %}
+        <div class="bank-actions"><button type="button" class="secondary small plaid-update" data-item-id="{{ group.item.item_id }}"><svg class="mini-icon"><use href="#i-refresh"></use></svg> Reconnect / refresh access</button></div>
+      </div>
+    </details>
+    {% else %}<div class="empty-state">No banks connected yet. Add your first connection above.</div>{% endfor %}
+  </div>
+</section>
+
+<div class="settings-grid settings-lower">
+  <section class="panel"><div class="section-heading"><div class="heading-with-icon"><span class="section-icon"><svg class="icon"><use href="#i-refresh"></use></svg></span><div><h2>Sync now</h2><p class="muted compact">Run an immediate incremental refresh.</p></div></div><form method="post" action="/settings/sync"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="small" type="submit">Sync now</button></form></div></section>
+  <section class="panel"><div class="heading-with-icon"><span class="section-icon"><svg class="icon"><use href="#i-lock"></use></svg></span><div><h2>Change password</h2><p class="muted compact">Signs out all existing sessions.</p></div></div><form method="post" action="/settings/change-password" class="stack-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Current password<input type="password" name="current_password" autocomplete="current-password" required></label><label>New password<input type="password" name="new_password" autocomplete="new-password" minlength="{{ minimum_password_length }}" required></label><label>Confirm new password<input type="password" name="confirm_password" autocomplete="new-password" minlength="{{ minimum_password_length }}" required></label><button class="small" type="submit">Change password</button></form></section>
+</div>
+
+
+
+<div id="plaid-config" data-csrf-token="{{ csrf_token }}" hidden></div>
+{% endblock %}
+{% block scripts %}<script src="/static/plaid.js"></script>{% endblock %}

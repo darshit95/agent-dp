@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Buckets · PocketTrack{% endblock %}
+{% block content %}
+<header class="topbar">
+  <div><div class="brand">PocketTrack</div><div class="muted">Buckets & monthly budgets</div></div>
+  <div class="top-actions"><a class="nav-link" href="/">Dashboard</a><a class="nav-link" href="/transactions">Transactions</a><a class="nav-link" href="/settings">Settings</a><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="secondary">Log out</button></form></div>
+</header>
+{% if message %}<div class="alert success">{{ message }}</div>{% endif %}
+<section class="panel">
+  <h2>Add bucket</h2>
+  <form method="post" action="/buckets" class="bucket-create-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Bucket name<input name="name" required maxlength="80" placeholder="Dining"></label>
+    <label>Monthly budget<input name="monthly_budget" inputmode="decimal" placeholder="400.00"></label>
+    <button type="submit">Add Bucket</button>
+  </form>
+</section>
+<section class="panel next-step">
+  <h2>Active buckets</h2>
+  <div class="bucket-editor-list">
+    {% for bucket in buckets %}
+      <div class="bucket-editor-row {% if not bucket.active %}inactive{% endif %}">
+        <form method="post" action="/buckets/{{ bucket.id }}" class="bucket-update-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <label>Name<input name="name" value="{{ bucket.name }}" required maxlength="80"></label>
+          <label>Monthly budget<input name="monthly_budget" inputmode="decimal" value="{% if bucket.default_budget_cents is not none %}{{ '%.2f'|format(bucket.default_budget_cents / 100) }}{% endif %}" placeholder="No budget"></label>
+          <button type="submit" class="secondary small">Save</button>
+        </form>
+        {% if bucket.active %}<form method="post" action="/buckets/{{ bucket.id }}/deactivate"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="danger-link">Deactivate</button></form>{% else %}<span class="badge pending">Inactive</span>{% endif %}
+      </div>
+    {% endfor %}
+  </div>
+</section>
+<section class="panel next-step">
+  <h2>Learned merchant rules</h2>
+  <p class="muted compact">Rules are created only when you explicitly choose “Remember merchant” on a transaction.</p>
+  {% if merchant_rules %}<div class="table-wrap"><table><thead><tr><th>Merchant</th><th>Bucket</th><th></th></tr></thead><tbody>{% for rule in merchant_rules %}<tr><td>{{ rule.display_name }}</td><td>{{ rule.bucket_name }}</td><td class="right"><form method="post" action="/merchant-rules/{{ rule.id }}/delete"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="danger-link small" type="submit">Forget rule</button></form></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty-state">No learned merchant rules yet.</div>{% endif %}
+</section>
+{% endblock %}

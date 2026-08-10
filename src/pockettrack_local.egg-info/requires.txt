@@ -1,0 +1,13 @@
+fastapi<1,>=0.115
+uvicorn<1,>=0.30
+jinja2<4,>=3.1
+pydantic<3,>=2.9
+python-multipart<1,>=0.0.12
+argon2-cffi<26,>=23.1
+keyring<26,>=25
+sqlcipher3<0.7,>=0.6.2
+httpx<1,>=0.27
+cryptography<48,>=43
+
+[dev]
+pytest<10,>=8

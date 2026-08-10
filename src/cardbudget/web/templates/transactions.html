@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Transactions · PocketTrack{% endblock %}
+{% block content %}
+<header class="topbar">
+  <div><div class="brand">PocketTrack</div><div class="muted">Transactions & categorization</div></div>
+  <div class="top-actions">
+    <a class="nav-link" href="/?month={{ selected_month }}">Dashboard</a>
+    <a class="nav-link" href="/buckets">Buckets</a>
+    <a class="nav-link" href="/settings">Settings</a>
+    <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="secondary">Log out</button></form>
+  </div>
+</header>
+{% if message %}<div class="alert success">{{ message }}</div>{% endif %}
+<section class="panel">
+  <div class="section-heading">
+    <div><h2>Transactions · {{ selected_month }}</h2><p class="muted compact">AI suggestions are editable. Check “Remember merchant” when a correction should become a future rule.</p></div>
+    <div class="button-row">
+      <form method="get" action="/transactions" class="month-form"><input type="month" name="month" value="{{ selected_month }}"><button class="secondary small" type="submit">View</button></form>
+      <form method="post" action="/transactions/categorize"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="return_month" value="{{ selected_month }}"><button type="submit">Categorize {{ uncategorized_count }} with local AI</button></form>
+    </div>
+  </div>
+  {% if transactions %}
+  <div class="table-wrap"><table class="transactions-table">
+    <thead><tr><th>Date</th><th>Merchant / Description</th><th>Card</th><th class="right">Amount</th><th>Bucket</th><th>AI/source</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for tx in transactions %}<tr>
+      <td>{{ tx.budget_date or tx.posted_date or "—" }}</td>
+      <td><strong>{{ tx.merchant_name or tx.description }}</strong>{% if tx.merchant_name and tx.description != tx.merchant_name %}<div class="fine-print">{{ tx.description }}</div>{% endif %}<div class="fine-print">{{ tx.pfc_detailed or tx.pfc_primary or "No Plaid category" }}</div></td>
+      <td>{{ tx.card_name or "—" }}</td>
+      <td class="right">${{ "%.2f"|format(tx.amount_cents / 100) }}</td>
+      <td>
+        <form method="post" action="/transactions/{{ tx.transaction_id }}/bucket" class="bucket-edit-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="return_month" value="{{ selected_month }}">
+          <select name="bucket_id">
+            <option value="uncategorized" {% if tx.bucket_id is none %}selected{% endif %}>Uncategorized</option>
+            {% for bucket in buckets %}<option value="{{ bucket.id }}" {% if tx.bucket_id == bucket.id %}selected{% endif %}>{{ bucket.name }}</option>{% endfor %}
+          </select>
+          <label class="remember"><input type="checkbox" name="remember_merchant"> Remember merchant</label>
+          <button type="submit" class="small">Save</button>
+        </form>
+      </td>
+      <td>{% if tx.classification_source %}{{ tx.classification_source }}{% if tx.classification_confidence is not none %}<div class="fine-print">{{ "%.0f"|format(tx.classification_confidence * 100) }}% confidence</div>{% endif %}{% else %}—{% endif %}</td>
+      <td>{% if tx.pending %}<span class="badge pending">Pending</span>{% else %}<span class="badge posted">Posted</span>{% endif %}</td>
+    </tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<div class="empty-state">No transactions for {{ selected_month }}.</div>{% endif %}
+</section>
+{% endblock %}

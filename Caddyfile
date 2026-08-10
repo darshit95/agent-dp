@@ -1,0 +1,17 @@
+{
+    admin 127.0.0.1:2020
+}
+
+https://my-pocket-track {
+    bind 127.0.0.1
+    tls internal
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8000
+
+    header {
+        -Server
+        X-Content-Type-Options nosniff
+        Referrer-Policy no-referrer
+        X-Frame-Options DENY
+    }
+}

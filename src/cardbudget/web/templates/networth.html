@@ -1,0 +1,810 @@
+{% extends "base.html" %}
+{% block title %}Net Worth · PocketTrack{% endblock %}
+{% block content %}
+<header class="topbar simple-topbar">
+  <a class="brand-lockup" href="/"><span class="brand-mark"><svg class="icon"><use href="#i-wallet"></use></svg></span><span><strong>PocketTrack</strong><small>Net worth</small></span></a>
+  <div class="top-actions"><a class="nav-icon active-nav" href="/net-worth" aria-label="Net worth" title="Net worth"><svg class="icon"><use href="#i-chart"></use></svg></a><a class="nav-icon" href="/settings" aria-label="Settings" title="Settings"><svg class="icon"><use href="#i-settings"></use></svg></a></div>
+</header>
+{% if message %}<div class="alert success compact-alert">{{ message }}</div>{% endif %}
+
+
+<section class="nw-final-summary">
+  <span class="eyebrow">NET WORTH</span>
+
+  <div
+    class="nw-final-total {% if net_worth_cents < 0 %}negative{% endif %}"
+    data-net-worth-total
+  >
+    ${{ "%.2f"|format(net_worth_cents / 100) }}
+  </div>
+
+  <div class="nw-final-subtotals">
+    <span>
+      Assets
+      <strong data-assets-total>
+        ${{ "%.2f"|format(total_assets_cents / 100) }}
+      </strong>
+    </span>
+
+    <span>
+      Liabilities
+      <strong data-liabilities-total>
+        ${{ "%.2f"|format(total_liabilities_cents / 100) }}
+      </strong>
+    </span>
+  </div>
+</section>
+
+
+<section class="nw-final-grid">
+
+  <!-- =========================================================
+       ASSETS
+       ========================================================= -->
+
+  <div class="panel nw-final-assets">
+
+    <div class="nw-final-section-header">
+      <div>
+        <h2>Assets</h2>
+        <p class="muted compact">
+          Click a name, institution or value to edit it in place.
+        </p>
+      </div>
+
+      <details class="add-inline-details nw-add-details">
+        <summary>
+          <svg class="mini-icon">
+            <use href="#i-plus"></use>
+          </svg>
+          Add asset
+        </summary>
+
+        <form
+          method="post"
+          action="/net-worth/assets"
+          class="stack-form mini-form nw-inline-create"
+        >
+          <input
+            type="hidden"
+            name="csrf_token"
+            value="{{ csrf_token }}"
+          >
+
+          <label>
+            Asset name
+            <input
+              name="name"
+              maxlength="120"
+              required
+              placeholder="Emergency Funds"
+            >
+          </label>
+
+          <label>
+            Institution
+            <span class="optional">optional</span>
+            <input
+              name="institution"
+              maxlength="120"
+              placeholder="Capital One"
+            >
+          </label>
+
+          <label>
+            Current value
+            <input
+              name="current_value"
+              inputmode="decimal"
+              required
+              placeholder="30000"
+            >
+          </label>
+
+          <label>
+            Asset category
+            <select name="asset_bucket">
+              <option value="auto" selected>
+                Auto classify with local AI
+              </option>
+
+              {% for bucket in asset_buckets %}
+              <option value="{{ bucket }}">
+                {{ bucket }}
+              </option>
+              {% endfor %}
+            </select>
+          </label>
+
+          <label class="checkline">
+            <input
+              type="checkbox"
+              name="include_in_net_worth"
+              checked
+            >
+            Include in net worth
+          </label>
+
+          <button class="small" type="submit">
+            Add asset
+          </button>
+        </form>
+      </details>
+    </div>
+
+
+    {% if assets %}
+
+    <div class="asset-list nw-final-list">
+
+      {% for asset in assets %}
+
+      <div
+        class="asset-row inline-asset-row nw-final-row"
+        data-asset-row="{{ asset.id }}"
+      >
+
+        <div class="asset-inline-main">
+
+          <input
+            class="asset-inline-name inline-text-input"
+            value="{{ asset.name }}"
+            maxlength="120"
+            data-inline-asset-field="name"
+            data-asset-id="{{ asset.id }}"
+            data-original="{{ asset.name }}"
+            aria-label="Asset name"
+          >
+
+          <div class="asset-inline-meta">
+
+            <input
+              class="asset-inline-institution inline-text-input muted-input"
+              value="{{ asset.institution or '' }}"
+              maxlength="120"
+              placeholder="Add institution"
+              data-inline-asset-field="institution"
+              data-asset-id="{{ asset.id }}"
+              data-original="{{ asset.institution or '' }}"
+              aria-label="Institution"
+            >
+
+            <span class="meta-dot">·</span>
+
+            <span>
+              {{ asset.asset_bucket }}
+
+              {% if not asset.include_in_net_worth %}
+              · excluded
+              {% endif %}
+            </span>
+
+          </div>
+        </div>
+
+
+        <div class="asset-inline-value nw-inline-money">
+          <span>$</span>
+
+          <input
+            value="{{ '%.2f'|format(asset.current_value_cents / 100) }}"
+            inputmode="decimal"
+            data-inline-asset-field="current_value"
+            data-asset-id="{{ asset.id }}"
+            data-original="{{ '%.2f'|format(asset.current_value_cents / 100) }}"
+            aria-label="Asset value"
+          >
+        </div>
+
+
+        <div
+          class="inline-save-state"
+          data-save-state="{{ asset.id }}"
+          aria-live="polite"
+        ></div>
+
+
+        <details class="asset-more">
+          <summary aria-label="More asset options">
+            <svg class="chevron-icon">
+              <use href="#i-chevron"></use>
+            </svg>
+          </summary>
+
+          <div class="edit-drawer">
+
+            <form
+              method="post"
+              action="/net-worth/assets/{{ asset.id }}"
+              class="asset-option-form"
+            >
+              <input
+                type="hidden"
+                name="csrf_token"
+                value="{{ csrf_token }}"
+              >
+
+              <input
+                type="hidden"
+                name="name"
+                value="{{ asset.name }}"
+              >
+
+              <input
+                type="hidden"
+                name="institution"
+                value="{{ asset.institution or '' }}"
+              >
+
+              <input
+                type="hidden"
+                name="current_value"
+                value="{{ '%.2f'|format(asset.current_value_cents / 100) }}"
+              >
+
+              <label>
+                Category
+                <select name="asset_bucket">
+                  {% for bucket in asset_buckets %}
+                  <option
+                    value="{{ bucket }}"
+                    {% if bucket == asset.asset_bucket %}selected{% endif %}
+                  >
+                    {{ bucket }}
+                  </option>
+                  {% endfor %}
+                </select>
+              </label>
+
+              <label class="checkline">
+                <input
+                  type="checkbox"
+                  name="include_in_net_worth"
+                  {% if asset.include_in_net_worth %}checked{% endif %}
+                >
+                Include in net worth
+              </label>
+
+              <button class="small" type="submit">
+                Save options
+              </button>
+            </form>
+
+
+            <form
+              method="post"
+              action="/net-worth/assets/{{ asset.id }}/delete"
+              data-confirm-delete="asset"
+              class="inline-delete-form"
+            >
+              <input
+                type="hidden"
+                name="csrf_token"
+                value="{{ csrf_token }}"
+              >
+
+              <button
+                class="danger-text icon-button"
+                type="submit"
+              >
+                <svg class="mini-icon">
+                  <use href="#i-trash"></use>
+                </svg>
+                Delete asset
+              </button>
+            </form>
+
+          </div>
+        </details>
+
+      </div>
+
+      {% endfor %}
+
+    </div>
+
+    {% else %}
+
+    <div class="empty-state nw-final-empty">
+      No assets yet.
+    </div>
+
+    {% endif %}
+
+
+    <details class="nw-bottom-add">
+      <summary>
+        <svg class="mini-icon">
+          <use href="#i-plus"></use>
+        </svg>
+        Add asset
+      </summary>
+
+      <form
+        method="post"
+        action="/net-worth/assets"
+        class="stack-form mini-form nw-inline-create"
+      >
+        <input
+          type="hidden"
+          name="csrf_token"
+          value="{{ csrf_token }}"
+        >
+
+        <label>
+          Asset name
+          <input
+            name="name"
+            maxlength="120"
+            required
+          >
+        </label>
+
+        <label>
+          Institution
+          <span class="optional">optional</span>
+          <input
+            name="institution"
+            maxlength="120"
+          >
+        </label>
+
+        <label>
+          Current value
+          <input
+            name="current_value"
+            inputmode="decimal"
+            required
+          >
+        </label>
+
+        <label>
+          Asset category
+          <select name="asset_bucket">
+            <option value="auto" selected>
+              Auto classify with local AI
+            </option>
+
+            {% for bucket in asset_buckets %}
+            <option value="{{ bucket }}">
+              {{ bucket }}
+            </option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <label class="checkline">
+          <input
+            type="checkbox"
+            name="include_in_net_worth"
+            checked
+          >
+          Include in net worth
+        </label>
+
+        <button class="small" type="submit">
+          Add asset
+        </button>
+      </form>
+    </details>
+
+  </div>
+
+
+  <!-- =========================================================
+       ASSET ALLOCATION
+       ========================================================= -->
+
+  <aside class="panel allocation-panel nw-final-allocation">
+
+    <h2>Asset allocation</h2>
+
+    {% if total_assets_cents > 0 %}
+
+    <div class="donut-wrap">
+
+      <svg
+        class="donut"
+        viewBox="0 0 42 42"
+        role="img"
+        aria-label="Asset allocation donut chart"
+      >
+        <circle
+          class="donut-bg"
+          cx="21"
+          cy="21"
+          r="15.9155"
+          pathLength="100"
+        ></circle>
+
+        {% for seg in allocation_segments %}
+
+        <circle
+          class="donut-segment {{ seg.class_name }}"
+          data-allocation-bucket="{{ seg.bucket }}"
+          cx="21"
+          cy="21"
+          r="15.9155"
+          pathLength="100"
+          stroke-dasharray="{{ seg.dash }}"
+          stroke-dashoffset="{{ seg.offset }}"
+        ></circle>
+
+        {% endfor %}
+
+      </svg>
+
+      <div class="donut-center">
+        <strong data-allocation-total>
+          ${{ "%.0f"|format(total_assets_cents / 100) }}
+        </strong>
+        <span>assets</span>
+      </div>
+
+    </div>
+
+
+    <div class="allocation-legend">
+
+      {% for seg in allocation_segments %}
+
+      <div
+        class="legend-row"
+        data-legend-bucket="{{ seg.bucket }}"
+      >
+        <span
+          class="legend-dot {{ seg.class_name }}"
+        ></span>
+
+        <span class="legend-name">
+          {{ seg.bucket }}
+        </span>
+
+        <strong data-legend-value>
+          ${{ "%.2f"|format(seg.value_cents / 100) }}
+        </strong>
+
+        <span
+          class="legend-pct"
+          data-legend-percent
+        >
+          {{ "%.1f"|format(seg.percent) }}%
+        </span>
+      </div>
+
+      {% endfor %}
+
+    </div>
+
+    {% else %}
+
+    <div class="empty-state nw-final-empty">
+      Add included assets to see the allocation.
+    </div>
+
+    {% endif %}
+
+  </aside>
+
+</section>
+
+
+<!-- =========================================================
+     LIABILITIES
+     ========================================================= -->
+
+<section class="panel nw-final-liabilities">
+
+  <div class="nw-final-section-header">
+
+    <div>
+      <h2>Liabilities</h2>
+
+      <p class="muted compact">
+        Click a name, institution or balance to edit it in place.
+      </p>
+    </div>
+
+
+    <details class="add-inline-details nw-add-details">
+
+      <summary>
+        <svg class="mini-icon">
+          <use href="#i-plus"></use>
+        </svg>
+        Add liability
+      </summary>
+
+      <form
+        method="post"
+        action="/net-worth/liabilities"
+        class="stack-form mini-form nw-inline-create"
+      >
+        <input
+          type="hidden"
+          name="csrf_token"
+          value="{{ csrf_token }}"
+        >
+
+        <label>
+          Name
+          <input
+            name="name"
+            maxlength="120"
+            required
+            placeholder="Mortgage"
+          >
+        </label>
+
+        <label>
+          Institution
+          <span class="optional">optional</span>
+          <input
+            name="institution"
+            maxlength="120"
+          >
+        </label>
+
+        <label>
+          Current balance
+          <input
+            name="current_balance"
+            inputmode="decimal"
+            required
+            placeholder="250000"
+          >
+        </label>
+
+        <label class="checkline">
+          <input
+            type="checkbox"
+            name="include_in_net_worth"
+            checked
+          >
+          Include in net worth
+        </label>
+
+        <button class="small" type="submit">
+          Add liability
+        </button>
+      </form>
+
+    </details>
+
+  </div>
+
+
+  {% if liabilities %}
+
+  <div class="asset-list liability-list nw-final-list">
+
+    {% for liability in liabilities %}
+
+    <div
+      class="asset-row inline-asset-row inline-liability-row nw-final-row"
+      data-liability-row="{{ liability.id }}"
+    >
+
+      <div class="asset-inline-main">
+
+        <input
+          class="asset-inline-name inline-text-input"
+          value="{{ liability.name }}"
+          maxlength="120"
+          data-inline-liability-field="name"
+          data-liability-id="{{ liability.id }}"
+          data-original="{{ liability.name }}"
+          aria-label="Liability name"
+        >
+
+
+        <div class="asset-inline-meta">
+
+          <input
+            class="asset-inline-institution inline-text-input muted-input"
+            value="{{ liability.institution or '' }}"
+            maxlength="120"
+            placeholder="Add institution"
+            data-inline-liability-field="institution"
+            data-liability-id="{{ liability.id }}"
+            data-original="{{ liability.institution or '' }}"
+            aria-label="Liability institution"
+          >
+
+          {% if not liability.include_in_net_worth %}
+          <span class="meta-dot">·</span>
+          <span>excluded</span>
+          {% endif %}
+
+        </div>
+
+      </div>
+
+
+      <div class="asset-inline-value liability-inline-value nw-inline-money">
+        <span>$</span>
+
+        <input
+          value="{{ '%.2f'|format(liability.current_balance_cents / 100) }}"
+          inputmode="decimal"
+          data-inline-liability-field="current_balance"
+          data-liability-id="{{ liability.id }}"
+          data-original="{{ '%.2f'|format(liability.current_balance_cents / 100) }}"
+          aria-label="Liability balance"
+        >
+      </div>
+
+
+      <div
+        class="inline-save-state"
+        data-liability-save-state="{{ liability.id }}"
+        aria-live="polite"
+      ></div>
+
+
+      <details class="asset-more">
+
+        <summary aria-label="More liability options">
+          <svg class="chevron-icon">
+            <use href="#i-chevron"></use>
+          </svg>
+        </summary>
+
+        <div class="edit-drawer">
+
+          <form
+            method="post"
+            action="/net-worth/liabilities/{{ liability.id }}"
+            class="asset-option-form liability-option-form"
+            data-liability-options="{{ liability.id }}"
+          >
+            <input
+              type="hidden"
+              name="csrf_token"
+              value="{{ csrf_token }}"
+            >
+
+            <input
+              type="hidden"
+              name="name"
+              value="{{ liability.name }}"
+              data-liability-hidden-name
+            >
+
+            <input
+              type="hidden"
+              name="institution"
+              value="{{ liability.institution or '' }}"
+              data-liability-hidden-institution
+            >
+
+            <input
+              type="hidden"
+              name="current_balance"
+              value="{{ '%.2f'|format(liability.current_balance_cents / 100) }}"
+              data-liability-hidden-balance
+            >
+
+            <label class="checkline">
+              <input
+                type="checkbox"
+                name="include_in_net_worth"
+                {% if liability.include_in_net_worth %}checked{% endif %}
+              >
+              Include in net worth
+            </label>
+
+            <button class="small" type="submit">
+              Save options
+            </button>
+          </form>
+
+
+          <form
+            method="post"
+            action="/net-worth/liabilities/{{ liability.id }}/delete"
+            data-confirm-delete="liability"
+            class="inline-delete-form"
+          >
+            <input
+              type="hidden"
+              name="csrf_token"
+              value="{{ csrf_token }}"
+            >
+
+            <button
+              class="danger-text icon-button"
+              type="submit"
+            >
+              <svg class="mini-icon">
+                <use href="#i-trash"></use>
+              </svg>
+              Delete liability
+            </button>
+          </form>
+
+        </div>
+      </details>
+
+    </div>
+
+    {% endfor %}
+
+  </div>
+
+  {% else %}
+
+  <div class="empty-state nw-final-empty">
+    No liabilities entered.
+  </div>
+
+  {% endif %}
+
+
+  <details class="nw-bottom-add">
+
+    <summary>
+      <svg class="mini-icon">
+        <use href="#i-plus"></use>
+      </svg>
+      Add liability
+    </summary>
+
+    <form
+      method="post"
+      action="/net-worth/liabilities"
+      class="stack-form mini-form nw-inline-create"
+    >
+      <input
+        type="hidden"
+        name="csrf_token"
+        value="{{ csrf_token }}"
+      >
+
+      <label>
+        Name
+        <input
+          name="name"
+          maxlength="120"
+          required
+        >
+      </label>
+
+      <label>
+        Institution
+        <span class="optional">optional</span>
+        <input
+          name="institution"
+          maxlength="120"
+        >
+      </label>
+
+      <label>
+        Current balance
+        <input
+          name="current_balance"
+          inputmode="decimal"
+          required
+        >
+      </label>
+
+      <label class="checkline">
+        <input
+          type="checkbox"
+          name="include_in_net_worth"
+          checked
+        >
+        Include in net worth
+      </label>
+
+      <button class="small" type="submit">
+        Add liability
+      </button>
+    </form>
+
+  </details>
+
+</section>
+
+<div id="networth-config" data-csrf-token="{{ csrf_token }}" hidden></div>
+{% endblock %}
