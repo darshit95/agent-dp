@@ -7,7 +7,7 @@ Private spending, budgeting, and net-worth tracking for **macOS and Windows**.
 - This application can be run on **macOS or Windows**.
 - A **Plaid Trial account** is required to connect real bank and credit-card accounts.
 
-### Get Plaid Production Client ID and Secret
+#### Get Plaid Production Client ID and Secret
 
 1. Go to [https://plaid.com/](https://plaid.com/) and create a free developer account.
 
