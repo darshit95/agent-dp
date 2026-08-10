@@ -9,8 +9,8 @@ PocketTrack currently supports **macOS and Windows only**.
 ### macOS
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/pockettrack.git
-cd pockettrack
+git clone https://github.com/darshit95/agent-dp.git
+cd agent-dp/pocket-track
 ./start.sh
 ```
 
