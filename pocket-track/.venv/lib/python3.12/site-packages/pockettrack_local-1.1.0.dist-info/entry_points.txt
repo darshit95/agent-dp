@@ -1,0 +1,3 @@
+[console_scripts]
+cardbudget = cardbudget.cli:main
+pockettrack = cardbudget.cli:main
