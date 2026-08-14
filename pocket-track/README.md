@@ -130,7 +130,7 @@ PocketTrack itself is lightweight; the local AI model is the one genuinely heavy
 
 For comparison, a single busy browser tab commonly uses more memory than PocketTrack's entire idle footprint.
 
-**While categorizing** (the local LLM loaded and actively classifying transactions):
+**While categorizing** ( the local LLM loaded and actively classifying transactions ):
 
 | | Value |
 |---|---|
