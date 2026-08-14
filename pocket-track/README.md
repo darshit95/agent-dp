@@ -5,13 +5,11 @@ Private spending, budgeting, and net-worth tracking for **macOS and Windows**.
 ## Pre-requisites
 
 - **macOS 14+** or **Windows 10/11**.
-- A **Plaid account with Production access** (their free Trial Plan grants this). PocketTrack ships no shared Plaid secret — every user brings their own.
-- Roughly **6 GB free disk** (3.4 GB local AI model + Python environment) and an internet connection for first setup.
-- The default local AI model (`qwen3.5:4b`) is sized for machines with **16 GB+ RAM**. On smaller machines (e.g. 8 GB), it can compete hard with everything else running for memory. Set the `POCKETTRACK_OLLAMA_MODEL` environment variable to a smaller Ollama model tag before first start if you're on constrained hardware — `pockettrack doctor` prints the configured model alongside total system RAM so you can check the two are a reasonable match. Categorization always runs locally either way, and paces/caps itself so it can't monopolize the machine; anything it skips is simply retried on the next sync. See [Resource usage](#resource-usage) for measured numbers.
+- A **free Plaid account**. PocketTrack ships no shared Plaid secret — every user brings their own.
 
 ### Get your Plaid Production Client ID and Secret
 
-You need exactly two values: a **Client ID** and a **Production Secret**. Getting them takes about 10 minutes, plus Plaid's review time.
+You need exactly two values: a **Client ID** and a **Production Secret**. Getting them takes about 2 minutes, plus Plaid's review time.
 
 1. **Create an account** at [dashboard.plaid.com/signup](https://dashboard.plaid.com/signup) and verify your email.
 
@@ -31,13 +29,6 @@ You need exactly two values: a **Client ID** and a **Production Secret**. Gettin
    | **Production Secret** | Secret → **Production** row | Make sure you copy the **Production** secret, not Sandbox |
 
 5. **Keep them handy but do not put them in a file.** You paste them once into PocketTrack's Settings page after first launch (step 4 of [First-time application setup](#first-time-application-setup)), and they are stored in your operating system's Keychain — never in this repository, the database, or an `.env` file.
-
-> **Just want to look around first?** You can skip Plaid entirely and explore with Plaid's test banks:
-> ```bash
-> export POCKETTRACK_PLAID_ENVIRONMENT=sandbox
-> ```
-> Then use your **Sandbox** secret and log in to any test institution with username `user_good` / password `pass_good`. Net worth tracking works without Plaid at all.
-
 
 ## Start
 
@@ -297,6 +288,8 @@ Publishing the source to GitHub lets other people install their own local instan
 - Network access is needed during first setup to install dependencies, download the Ollama model, and communicate with Plaid.
 - On macOS, the startup script can install Homebrew and may prompt for administrator privileges.
 - On Windows, `winget` is recommended so `start.ps1` can install Python 3.12 and Ollama automatically.
+- Roughly **6 GB free disk** (3.4 GB local AI model + Python environment) and an internet connection for first setup.
+- The default local AI model (`qwen3.5:4b`) is sized for machines with **16 GB+ RAM**. On smaller machines (e.g. 8 GB), it can compete hard with everything else running for memory. Set the `POCKETTRACK_OLLAMA_MODEL` environment variable to a smaller Ollama model tag before first start if you're on constrained hardware — `pockettrack doctor` prints the configured model alongside total system RAM so you can check the two are a reasonable match. Categorization always runs locally either way, and paces/caps itself so it can't monopolize the machine; anything it skips is simply retried on the next sync. See [Resource usage](#resource-usage) for measured numbers.
 
 ## Development
 
