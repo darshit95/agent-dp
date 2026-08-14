@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}{{ bucket.name }} · PocketTrack{% endblock %}
+{% block content %}
+{% set icon = bucket_icon(bucket.name, bucket.icon) %}
+{% set is_system = bucket.name == system_bucket_name %}
+{% set over = bucket.default_budget_cents is not none and spent_cents > bucket.default_budget_cents %}
+
+<header class="topbar simple-topbar">
+  <a class="back-link" href="/?month={{ selected_month }}"><svg class="mini-icon"><use href="#i-chevron"></use></svg> All buckets</a>
+  <div class="top-actions">
+    <a class="nav-icon" href="/net-worth" aria-label="Net worth tracker" title="Net worth"><svg class="icon"><use href="#i-chart"></use></svg></a>
+    <a class="nav-icon" href="/settings" aria-label="Settings" title="Settings"><svg class="icon"><use href="#i-settings"></use></svg></a>
+  </div>
+</header>
+
+{% if message %}<div class="alert success compact-alert">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert compact-alert" role="alert">{{ error }}</div>{% endif %}
+
+<section class="panel bucket-hero">
+  <div class="bucket-hero-main">
+    <span class="bucket-icon xlarge tint-{{ icon.tint }}"><svg class="icon"><use href="#i-{{ icon.id }}"></use></svg></span>
+    <div class="bucket-hero-text">
+      <h1>{{ bucket.name }}</h1>
+      <p class="muted compact">{{ selected_month }} · posted purchases and refunds</p>
+    </div>
+  </div>
+
+  <div class="bucket-hero-figures">
+    <div class="bucket-hero-spend">
+      <div class="stat-label">Spent</div>
+      <strong>${{ "%.2f"|format(spent_cents / 100) }}</strong>
+    </div>
+    {% if bucket.default_budget_cents is not none %}
+    <div class="bucket-hero-budget">
+      <progress class="bucket-meter {% if over %}over{% endif %}"
+                value="{{ 0 if spent_cents < 0 else spent_cents }}"
+                max="{{ bucket.default_budget_cents if bucket.default_budget_cents > 0 else 1 }}"
+                aria-label="Budget used"></progress>
+      <div class="bucket-status {% if over %}over-text{% else %}under-text{% endif %}">
+        {% if over %}${{ "%.2f"|format((spent_cents - bucket.default_budget_cents) / 100) }} over{% else %}${{ "%.2f"|format((bucket.default_budget_cents - spent_cents) / 100) }} left{% endif %}
+        <span class="bucket-status-budget">of ${{ "%.2f"|format(bucket.default_budget_cents / 100) }}</span>
+      </div>
+    </div>
+    {% else %}
+    <div class="bucket-status">No budget set</div>
+    {% endif %}
+  </div>
+
+  <div class="bucket-hero-actions">
+    <a class="button-like" href="/buckets/{{ bucket.id }}?month={{ selected_month }}{% if not edit_open %}&edit=1{% endif %}">
+      <svg class="mini-icon"><use href="#i-edit"></use></svg> {% if edit_open %}Close editor{% else %}Edit{% endif %}
+    </a>
+    {% if not is_system %}
+    <form method="post" action="/buckets/{{ bucket.id }}/delete" data-confirm-delete="bucket" data-bucket-name="{{ bucket.name }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="return_month" value="{{ selected_month }}">
+      <button class="button-like danger-button" type="submit"><svg class="mini-icon"><use href="#i-trash"></use></svg> Delete</button>
+    </form>
+    {% endif %}
+  </div>
+</section>
+
+{% if edit_open %}
+<section class="panel bucket-editor">
+  <h2>Edit bucket</h2>
+  <form method="post" action="/buckets/{{ bucket.id }}" class="bucket-edit-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="return_month" value="{{ selected_month }}">
+    {% if is_system %}
+    <label>Name<input name="name" value="{{ bucket.name }}" readonly aria-describedby="system-bucket-note"></label>
+    {% else %}
+    <label>Name<input name="name" maxlength="80" required value="{{ bucket.name }}"></label>
+    {% endif %}
+    <label>Monthly budget<input name="monthly_budget" inputmode="decimal" value="{% if bucket.default_budget_cents is not none %}{{ '%.2f'|format(bucket.default_budget_cents / 100) }}{% endif %}" placeholder="No budget"></label>
+
+    <fieldset class="icon-picker">
+      <legend>Icon</legend>
+      <label class="icon-choice" title="Pick automatically from the name">
+        <input type="radio" name="icon" value="auto" {% if not bucket.icon %}checked{% endif %}>
+        <span class="icon-chip tint-auto"><svg class="icon"><use href="#i-auto"></use></svg></span>
+        <span class="visually-hidden">Automatic</span>
+      </label>
+      {% for choice in icon_choices %}
+      <label class="icon-choice" title="{{ choice.label }}">
+        <input type="radio" name="icon" value="{{ choice.id }}" {% if bucket.icon == choice.id %}checked{% endif %}>
+        <span class="icon-chip tint-{{ choice.tint }}"><svg class="icon"><use href="#i-{{ choice.id }}"></use></svg></span>
+        <span class="visually-hidden">{{ choice.label }}</span>
+      </label>
+      {% endfor %}
+    </fieldset>
+
+    <div class="bucket-edit-footer">
+      <button class="small" type="submit"><svg class="mini-icon"><use href="#i-check"></use></svg> Save bucket</button>
+      <a class="button-like" href="/buckets/{{ bucket.id }}?month={{ selected_month }}">Cancel</a>
+    </div>
+  </form>
+  {% if is_system %}
+  <p class="fine-print" id="system-bucket-note">{{ system_bucket_name }} collects anything not yet categorized, so its name is fixed and it cannot be deleted.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="panel bucket-transactions">
+  <div class="section-heading">
+    <div>
+      <h2>Transactions</h2>
+      <p class="muted compact">{{ transactions|length }} in {{ selected_month }}</p>
+    </div>
+  </div>
+
+  {% if transactions %}
+  <div class="transaction-list">
+    {% for tx in transactions %}
+    <div class="transaction-row">
+      <div class="transaction-main"><strong>{{ tx.merchant_name or tx.description }}</strong><span>{{ tx.budget_date or tx.posted_date }} · {{ tx.card_name or "Card" }}</span></div>
+      <div class="transaction-amount">${{ "%.2f"|format(tx.amount_cents / 100) }}</div>
+      <form method="post" action="/transactions/{{ tx.transaction_id }}/bucket" class="transaction-category-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="return_month" value="{{ selected_month }}">
+        <input type="hidden" name="return_bucket" value="{{ bucket.id }}">
+        <select name="bucket_id" aria-label="Bucket">{% for b in buckets %}<option value="{{ b.id }}" {% if tx.bucket_id == b.id or (tx.bucket_id is none and b.name == system_bucket_name) %}selected{% endif %}>{{ b.name }}</option>{% endfor %}</select>
+        <label class="remember"><input type="checkbox" name="remember_merchant"> Remember</label>
+        <button class="small secondary" type="submit">Save</button>
+      </form>
+      <form method="post" action="/transactions/{{ tx.transaction_id }}/delete" class="delete-form" data-confirm-delete="transaction">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="return_month" value="{{ selected_month }}">
+        <input type="hidden" name="return_bucket" value="{{ bucket.id }}">
+        <button class="icon-danger" type="submit" title="Delete transaction" aria-label="Delete transaction"><svg class="mini-icon"><use href="#i-trash"></use></svg></button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">No transactions in {{ bucket.name }} for {{ selected_month }}.</div>
+  {% endif %}
+</section>
+
+<a class="back-footer" href="/?month={{ selected_month }}"><svg class="mini-icon"><use href="#i-chevron"></use></svg> Back to all buckets</a>
+{% endblock %}

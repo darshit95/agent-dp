@@ -15,6 +15,13 @@ $Model = if ($env:POCKETTRACK_OLLAMA_MODEL) {
 
 New-Item -ItemType Directory -Force -Path $Runtime | Out-Null
 
+# Make the package importable regardless of the venv's .pth state. A checkout in
+# a cloud-synced folder can end up with a hidden .pth, which Python skips - the
+# venv looks installed but "import cardbudget" fails. Every command below, and
+# the server we launch, inherits this.
+$SrcPath = Join-Path $Root "src"
+$env:PYTHONPATH = if ($env:PYTHONPATH) { "$SrcPath;$env:PYTHONPATH" } else { $SrcPath }
+
 function Say {
     param([string]$Message)
     Write-Host ""
@@ -309,12 +316,13 @@ if (-not $BackendReady) {
     Fail "PocketTrack backend did not become ready."
 }
 
-Say "Installing daily 8:00 AM refresh"
+Say "Installing automatic refresh (8:00 AM and 8:00 PM)"
 
 try {
-    & $VenvPocketTrack install-scheduler --hour 8
+    & $VenvPocketTrack install-scheduler --hours 8,20
+    & $VenvPocketTrack scheduler-status
 } catch {
-    Write-Warning "Daily scheduler could not be installed automatically."
+    Write-Warning "The sync scheduler could not be installed automatically. Retry with: pockettrack install-scheduler --hours 8,20"
 }
 
 Say "Ready"

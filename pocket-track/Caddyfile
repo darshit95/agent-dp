@@ -1,5 +1,13 @@
 {
     admin 127.0.0.1:2020
+    # Caddy runs as a system LaunchDaemon (root, no $HOME set by launchd), so its
+    # usual "$HOME/Library/Application Support/Caddy" default can't be resolved
+    # and it would otherwise fall back to the process's working directory - "/"
+    # for a LaunchDaemon, which is macOS's read-only system volume. Pin storage
+    # (the local CA root/certs) to an explicit, writable, non-secret path instead.
+    storage file_system {
+        root "/Library/Application Support/PocketTrack/data"
+    }
 }
 
 https://my-pocket-track {

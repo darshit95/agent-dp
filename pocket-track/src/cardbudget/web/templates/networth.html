@@ -80,10 +80,19 @@
 
       {% for asset in assets %}
 
+      {% set icon = asset_bucket_icon(asset.asset_bucket) %}
+
       <div
         class="asset-row inline-asset-row nw-final-row"
         data-asset-row="{{ asset.id }}"
       >
+
+        <span
+          class="row-icon tint-{{ icon.tint }}"
+          title="{{ asset.asset_bucket }}"
+        >
+          <svg class="icon"><use href="#i-{{ icon.id }}"></use></svg>
+        </span>
 
         <div class="asset-inline-main">
 
@@ -393,9 +402,9 @@
         class="legend-row"
         data-legend-bucket="{{ seg.bucket }}"
       >
-        <span
-          class="legend-dot {{ seg.class_name }}"
-        ></span>
+        <svg class="mini-icon legend-icon {{ seg.class_name }}">
+          <use href="#i-{{ asset_bucket_icon(seg.bucket).id }}"></use>
+        </svg>
 
         <span class="legend-name">
           {{ seg.bucket }}
@@ -521,10 +530,16 @@
 
     {% for liability in liabilities %}
 
+    {% set icon = liability_icon(liability.name) %}
+
     <div
       class="asset-row inline-asset-row inline-liability-row nw-final-row"
       data-liability-row="{{ liability.id }}"
     >
+
+      <span class="row-icon tint-{{ icon.tint }}">
+        <svg class="icon"><use href="#i-{{ icon.id }}"></use></svg>
+      </span>
 
       <div class="asset-inline-main">
 

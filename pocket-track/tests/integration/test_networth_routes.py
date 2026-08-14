@@ -170,3 +170,30 @@ def test_networth_page_always_exposes_csrf_token(create_user):
     assert 'name="csrf_token"' in page.text
     assert 'value="' in page.text
 
+
+
+def test_networth_rows_render_category_icons(create_user):
+    """Assets take an icon from their category; liabilities from their name."""
+    _settings, _store, _db, services, client = create_user
+    services.networth_repository.create_asset(
+        name="Brokerage",
+        institution="Example Broker",
+        value_cents=1000000,
+        asset_bucket="Taxable Investments",
+        include=True,
+    )
+    services.networth_repository.create_liability(
+        name="Mortgage",
+        institution="Example Bank",
+        balance_cents=25000000,
+        include=True,
+    )
+
+    html = client.get("/net-worth").text
+
+    assert 'href="#i-growth"' in html      # Taxable Investments
+    assert 'href="#i-home"' in html        # Mortgage
+    assert 'href="#i-cash"' in html        # allocation legend covers every category
+    assert 'href="#i-shield"' in html
+    assert 'href="#i-gem"' in html
+    assert 'href="#i-box"' in html

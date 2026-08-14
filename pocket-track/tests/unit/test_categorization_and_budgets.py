@@ -118,6 +118,48 @@ def test_remember_merchant_rule_overrides_llm_for_future_transaction(test_stack)
     assert tx_repo.get("tx-future").bucket_name == "Grocery"
 
 
+def test_categorization_stops_calling_the_llm_under_memory_pressure(test_stack, monkeypatch):
+    """A tight-memory machine should never be pushed further by a long run of
+    local LLM calls: once memory is tight, remaining unassigned transactions
+    fall back to Unknown (like the existing Ollama-unavailable path) instead
+    of continuing to call the model."""
+    _settings, _store, db, services, _client = test_stack
+    _seed_account_and_transactions(db)
+    tx_repo = TransactionRepository(db)
+    rules = MerchantRuleRepository(db)
+
+    now = to_iso(utc_now())
+    with db.transaction() as conn:
+        conn.execute(
+            """
+            INSERT INTO transactions(
+                transaction_id, account_id, amount_cents, iso_currency_code, posted_date,
+                authorized_date, budget_date, merchant_name, description, pending,
+                pfc_primary, is_removed, created_at, updated_at
+            ) VALUES ('tx-posted-2', 'acct-1', 1500, 'USD', '2026-08-11', '2026-08-11',
+                      '2026-08-11', 'Coffee Shop', 'COFFEE SHOP PURCHASE', 0, 'FOOD_AND_DRINK', 0, ?, ?)
+            """,
+            (now, now),
+        )
+
+    monkeypatch.setattr("cardbudget.categorization.service._memory_is_tight", lambda: True)
+    fake = FakeLLM()
+    categorizer = CategorizationService(
+        transactions=tx_repo,
+        buckets=services.buckets,
+        merchant_rules=rules,
+        llm=fake,
+    )
+
+    result = categorizer.categorize_unassigned()
+    assert fake.calls == 0
+    assert result.llm_applied == 0
+    assert result.left_uncategorized == 2
+    assert result.memory_paused is True
+    assert tx_repo.get("tx-posted").bucket_name == "Unknown"
+    assert tx_repo.get("tx-posted-2").bucket_name == "Unknown"
+
+
 def test_budget_summary_excludes_pending_and_applies_refunds(test_stack):
     _settings, _store, db, services, _client = test_stack
     _seed_account_and_transactions(db)

@@ -1,10 +1,19 @@
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass
 
 from cardbudget.categorization.ollama import OllamaClassifierClient, OllamaUnavailable
 from cardbudget.db.repositories import BucketRepository, MerchantRuleRepository, TransactionRepository
+
+# Shared cap for how many unassigned transactions a single categorization pass
+# will touch. Local LLM classification is one blocking HTTP call per transaction
+# on constrained hardware (see cli.py, web/routes.py, plaid/routes.py call sites) -
+# a large limit turns one sync into a long, uninterrupted burst of full-tilt
+# inference. Anything left over is simply picked up by the next sync, since
+# list_unassigned() is re-queried every time - nothing is lost by capping this.
+DEFAULT_BATCH_LIMIT = 150
 
 
 def merchant_key(merchant: str | None, description: str | None) -> str:
@@ -14,12 +23,25 @@ def merchant_key(merchant: str | None, description: str | None) -> str:
     return raw[:160]
 
 
+def _memory_is_tight(threshold_percent: float = 90.0) -> bool:
+    """Best-effort local memory-pressure check. Fails soft: if psutil isn't
+    installed or the check raises for any reason, assume memory is fine rather
+    than block categorization on a diagnostic that couldn't run."""
+    try:
+        import psutil
+
+        return psutil.virtual_memory().percent >= threshold_percent
+    except Exception:
+        return False
+
+
 @dataclass(frozen=True)
 class CategorizationResult:
     rule_applied: int
     llm_applied: int
     left_uncategorized: int
     ollama_unavailable: bool
+    memory_paused: bool = False
 
 
 class CategorizationService:
@@ -30,13 +52,15 @@ class CategorizationService:
         buckets: BucketRepository,
         merchant_rules: MerchantRuleRepository,
         llm: OllamaClassifierClient,
+        pace_seconds: float = 0.0,
     ) -> None:
         self.transactions = transactions
         self.buckets = buckets
         self.merchant_rules = merchant_rules
         self.llm = llm
+        self.pace_seconds = pace_seconds
 
-    def categorize_unassigned(self, limit: int = 200) -> CategorizationResult:
+    def categorize_unassigned(self, limit: int = DEFAULT_BATCH_LIMIT) -> CategorizationResult:
         candidates = self.transactions.list_unassigned(limit)
         active_buckets = self.buckets.list_active()
         by_name = {b.name: b.id for b in active_buckets}
@@ -45,6 +69,7 @@ class CategorizationService:
         llm_applied = 0
         left = 0
         unavailable = False
+        memory_paused = False
 
         unknown_id = by_name.get("Unknown")
 
@@ -58,11 +83,20 @@ class CategorizationService:
                 rule_applied += 1
                 continue
 
-            if unavailable:
+            if not unavailable and not memory_paused and _memory_is_tight():
+                # Stop calling the local model for the rest of this batch rather
+                # than push an already-strained machine further. The remaining
+                # transactions fall back to Unknown, same as when Ollama is down,
+                # and get a real classification attempt on the next sync.
+                memory_paused = True
+
+            if unavailable or memory_paused:
                 if unknown_id is not None:
                     self.transactions.assign_bucket(tx.transaction_id, unknown_id, source="unknown_fallback", confidence=0.0)
                 left += 1
                 continue
+            if self.pace_seconds:
+                time.sleep(self.pace_seconds)
             try:
                 result = self.llm.classify(
                     merchant=tx.merchant_name or "",
@@ -91,7 +125,13 @@ class CategorizationService:
                     self.transactions.mark_uncategorized(tx.transaction_id, source="local_llm")
                 left += 1
 
-        return CategorizationResult(rule_applied, llm_applied, left, unavailable)
+        return CategorizationResult(
+            rule_applied=rule_applied,
+            llm_applied=llm_applied,
+            left_uncategorized=left,
+            ollama_unavailable=unavailable,
+            memory_paused=memory_paused,
+        )
 
     def manual_assign(self, transaction_id: str, bucket_id: int | None, remember_merchant: bool) -> None:
         tx = self.transactions.get(transaction_id)

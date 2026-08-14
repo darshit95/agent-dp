@@ -132,3 +132,42 @@ def test_empty_month_does_not_leak_other_month_data(create_user):
     july = client.get("/?month=2026-07")
     assert "No posted spending stored for 2026-07" in july.text
     assert "$99.99" not in july.text
+
+
+def test_static_assets_are_version_stamped(create_user):
+    """Static responses are cacheable, so upgrades must change their URL.
+
+    Without this the browser keeps the previous release's CSS and the new
+    markup renders unstyled.
+    """
+    _settings, _store, _db, _services, client = create_user
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "/static/app.css?v=" in response.text
+    assert "/static/app.js?v=" in response.text
+    assert 'href="/static/app.css"' not in response.text
+
+
+def test_dashboard_warns_when_automatic_sync_has_gone_stale(create_user, monkeypatch):
+    """A failing launchd sync only writes to a log file, so the UI must say so."""
+    from datetime import datetime, timedelta, timezone
+
+    from cardbudget.web import routes
+
+    _settings, _store, _db, services, client = create_user
+    monkeypatch.setattr(services.plaid, "credentials_configured", lambda: True)
+    monkeypatch.setattr(
+        services.plaid_repository,
+        "latest_sync_at",
+        lambda *_a, **_k: datetime.now(timezone.utc) - timedelta(days=3),
+    )
+
+    assert "Automatic sync hasn't run since" in client.get("/").text
+
+    monkeypatch.setattr(
+        services.plaid_repository,
+        "latest_sync_at",
+        lambda *_a, **_k: datetime.now(timezone.utc) - timedelta(hours=2),
+    )
+    assert "Automatic sync hasn't run since" not in client.get("/").text
+    assert routes._sync_is_stale(None) is False, "a never-synced setup is not a failure"

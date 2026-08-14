@@ -1,4 +1,4 @@
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 CORE_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS app_meta (
@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS buckets (
     name TEXT NOT NULL UNIQUE COLLATE NOCASE,
     default_budget_cents INTEGER NULL CHECK (default_budget_cents IS NULL OR default_budget_cents >= 0),
     active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+    icon TEXT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -142,6 +143,13 @@ CREATE TABLE IF NOT EXISTS asset_rules (
     updated_at TEXT NOT NULL
 );
 """
+
+# Columns added after a table's first release. CREATE TABLE IF NOT EXISTS leaves
+# existing databases untouched, so each entry is applied with ALTER TABLE when the
+# column is missing. Append-only, and every column must be nullable or defaulted.
+ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("buckets", "icon", "TEXT NULL"),
+)
 
 DEFAULT_BUCKETS = (
     "Subscriptions",

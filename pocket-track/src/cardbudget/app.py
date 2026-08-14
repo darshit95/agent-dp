@@ -9,9 +9,24 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from cardbudget.auth.routes import router as auth_router
 from cardbudget.config import Settings
+from cardbudget.icons import asset_bucket_icon, bucket_icon, liability_icon
 from cardbudget.plaid.routes import router as plaid_router
 from cardbudget.services import ApplicationServices, bootstrap_services
 from cardbudget.web.routes import router as web_router
+
+
+def _static_version(static_dir: Path) -> str:
+    """Short stamp appended to static URLs so upgrades are not served from cache.
+
+    Static responses are deliberately cacheable (they are the only ones without
+    no-store), so without this a user keeps the previous release's CSS/JS after
+    updating PocketTrack.
+    """
+    newest = 0
+    for asset in sorted(static_dir.glob("*")):
+        if asset.is_file():
+            newest = max(newest, int(asset.stat().st_mtime))
+    return str(newest)
 
 
 async def _security_headers(request: Request, call_next):
@@ -77,6 +92,14 @@ def create_app(
     template_dir = package_dir / "web" / "templates"
     static_dir = package_dir / "web" / "static"
     app.state.templates = Jinja2Templates(directory=str(template_dir))
+    # Icons are resolved per row inside loops, so they are exposed as template
+    # globals rather than precomputed alongside every context dict.
+    app.state.templates.env.globals.update(
+        bucket_icon=bucket_icon,
+        asset_bucket_icon=asset_bucket_icon,
+        liability_icon=liability_icon,
+        static_version=_static_version(static_dir),
+    )
 
     app.add_middleware(
         TrustedHostMiddleware,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from urllib.parse import quote_plus
 
@@ -8,6 +8,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from cardbudget.db.schema import ASSET_BUCKETS
+from cardbudget.icons import BUCKET_ICON_CHOICES, ICONS
 from cardbudget.plaid.client import PlaidAPIError
 
 router = APIRouter()
@@ -83,13 +84,43 @@ def _optional_budget_to_cents(value: str) -> int | None:
     return _money_to_cents(clean, field_name="Budget", maximum=Decimal("1000000"))
 
 
-def _home_url(month: str, bucket_id: int | None = None, message: str | None = None) -> str:
+def _home_url(
+    month: str,
+    bucket_id: int | None = None,
+    message: str | None = None,
+    error: str | None = None,
+) -> str:
     parts = [f"month={quote_plus(month)}"]
     if bucket_id is not None:
         parts.append(f"bucket={bucket_id}")
     if message:
         parts.append(f"message={quote_plus(message)}")
+    if error:
+        parts.append(f"error={quote_plus(error)}")
     return "/?" + "&".join(parts)
+
+
+def _bucket_url(
+    bucket_id: int,
+    month: str,
+    message: str | None = None,
+    error: str | None = None,
+    edit: bool = False,
+) -> str:
+    parts = [f"month={quote_plus(month)}"]
+    if edit:
+        parts.append("edit=1")
+    if message:
+        parts.append(f"message={quote_plus(message)}")
+    if error:
+        parts.append(f"error={quote_plus(error)}")
+    return f"/buckets/{bucket_id}?" + "&".join(parts)
+
+
+def _icon_or_auto(value: str) -> str | None:
+    """Return a stored icon id, or None to keep deriving it from the bucket name."""
+    cleaned = (value or "").strip().lower()
+    return cleaned if cleaned in ICONS else None
 
 
 def _format_last_refresh(value):
@@ -101,6 +132,21 @@ def _format_last_refresh(value):
         return value.astimezone().strftime("%b %d, %Y · %I:%M %p").replace(" 0", " ")
 
 
+# Two scheduled syncs a day means a gap this long implies several were missed.
+STALE_SYNC_AFTER = timedelta(hours=26)
+
+
+def _sync_is_stale(last_refresh) -> bool:
+    """True when automatic syncing looks broken rather than merely idle.
+
+    A scheduled sync that fails writes to a log nobody reads, so the dashboard
+    has to say something.
+    """
+    if last_refresh is None:
+        return False
+    return datetime.now(timezone.utc) - last_refresh > STALE_SYNC_AFTER
+
+
 @router.get("/", response_class=HTMLResponse)
 def dashboard(request: Request, month: str | None = None, bucket: int | None = None):
     services = _services(request)
@@ -108,19 +154,14 @@ def dashboard(request: Request, month: str | None = None, bucket: int | None = N
     if redirect:
         return redirect
     selected_month = _month_or_current(month)
+    # Buckets used to expand inline on the dashboard; keep old links working.
+    if bucket is not None:
+        return RedirectResponse(_bucket_url(bucket, selected_month), status_code=303)
     summary = services.buckets.monthly_summary(selected_month)
     total_spent = sum(row.spent_cents for row in summary)
     accounts = services.plaid_repository.list_accounts(services.plaid.environment)
     mapped = [a for a in accounts if a.enabled]
 
-    selected_bucket = services.buckets.get(bucket) if bucket is not None else None
-    if selected_bucket and not selected_bucket.active:
-        selected_bucket = None
-    selected_transactions = (
-        services.transactions.list_for_bucket(selected_bucket.id, selected_month, 500)
-        if selected_bucket
-        else []
-    )
     item_errors = services.plaid_repository.items_with_errors(services.plaid.environment)
     reauth_items = [item for item in item_errors if (item.last_sync_error_code or "") in REAUTH_ERROR_CODES]
     last_refresh = services.plaid_repository.latest_sync_at(services.plaid.environment)
@@ -135,14 +176,49 @@ def dashboard(request: Request, month: str | None = None, bucket: int | None = N
             "total_spent_cents": total_spent,
             "mapped_cards": mapped,
             "mapped_cards_count": len(mapped),
-            "selected_bucket": selected_bucket,
-            "selected_transactions": selected_transactions,
-            "buckets": services.buckets.list_active(),
             "has_transactions": services.transactions.count_for_month(selected_month) > 0,
             "credentials_configured": services.plaid.credentials_configured(),
             "message": request.query_params.get("message"),
+            "error": request.query_params.get("error"),
             "last_refreshed": _format_last_refresh(last_refresh),
+            "sync_is_stale": services.plaid.credentials_configured() and _sync_is_stale(last_refresh),
             "reauth_items": reauth_items,
+            "icon_choices": BUCKET_ICON_CHOICES,
+            "system_bucket_name": services.buckets.SYSTEM_BUCKET_NAME,
+        },
+    )
+
+
+@router.get("/buckets/{bucket_id}", response_class=HTMLResponse)
+def bucket_page(bucket_id: int, request: Request, month: str | None = None, edit: str | None = None):
+    services = _services(request)
+    context, redirect = _require_authenticated_page(request)
+    if redirect:
+        return redirect
+    selected_month = _month_or_current(month)
+    bucket = services.buckets.get(bucket_id)
+    if not bucket or not bucket.active:
+        return RedirectResponse(_home_url(selected_month, error="That bucket no longer exists."), status_code=303)
+
+    summary = next(
+        (row for row in services.buckets.monthly_summary(selected_month) if row.bucket_id == bucket_id),
+        None,
+    )
+    return request.app.state.templates.TemplateResponse(
+        request,
+        "bucket.html",
+        {
+            "csrf_token": context.csrf_token,
+            "bucket": bucket,
+            "selected_month": selected_month,
+            "spent_cents": summary.spent_cents if summary else 0,
+            "transactions": services.transactions.list_for_bucket(bucket_id, selected_month, 500),
+            "buckets": services.buckets.list_active(),
+            "icon_choices": BUCKET_ICON_CHOICES,
+            "system_bucket_name": services.buckets.SYSTEM_BUCKET_NAME,
+            "edit_open": edit == "1",
+            "message": request.query_params.get("message"),
+            "error": request.query_params.get("error"),
         },
     )
 
@@ -177,7 +253,9 @@ def assign_transaction_bucket(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     services.audit.record("transaction_category_updated")
     selected_bucket = int(return_bucket) if return_bucket.isdigit() else parsed_bucket
-    return RedirectResponse(_home_url(month, selected_bucket), status_code=303)
+    if selected_bucket is None:
+        return RedirectResponse(_home_url(month), status_code=303)
+    return RedirectResponse(_bucket_url(selected_bucket, month), status_code=303)
 
 
 @router.post("/transactions/{transaction_id}/delete")
@@ -196,8 +274,9 @@ def delete_transaction(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     services.audit.record("transaction_deleted")
-    bucket_id = int(return_bucket) if return_bucket.isdigit() else None
-    return RedirectResponse(_home_url(month, bucket_id, "Transaction deleted"), status_code=303)
+    if return_bucket.isdigit():
+        return RedirectResponse(_bucket_url(int(return_bucket), month, "Transaction deleted"), status_code=303)
+    return RedirectResponse(_home_url(month, message="Transaction deleted"), status_code=303)
 
 
 @router.post("/buckets")
@@ -205,6 +284,7 @@ def create_bucket(
     request: Request,
     name: str = Form(...),
     monthly_budget: str = Form(""),
+    icon: str = Form(""),
     csrf_token: str = Form(...),
     return_month: str = Form(""),
 ):
@@ -212,18 +292,24 @@ def create_bucket(
     _require_csrf(request, csrf_token)
     month = _month_or_current(return_month or None)
     try:
-        created = services.buckets.create(name, _optional_budget_to_cents(monthly_budget))
+        created = services.buckets.create(
+            name, _optional_budget_to_cents(monthly_budget), _icon_or_auto(icon)
+        )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        # Duplicate names and bad amounts are ordinary typos, so send the user back
+        # to the dashboard with the reason rather than a raw error page.
+        return RedirectResponse(_home_url(month, error=str(exc)), status_code=303)
     services.audit.record("bucket_created")
-    return RedirectResponse(_home_url(month, created.id, "Bucket created"), status_code=303)
+    return RedirectResponse(_home_url(month, message=f"Added {created.name}"), status_code=303)
 
 
-@router.post("/buckets/{bucket_id}/budget")
-def update_bucket_budget(
+@router.post("/buckets/{bucket_id}")
+def update_bucket(
     bucket_id: int,
     request: Request,
+    name: str = Form(...),
     monthly_budget: str = Form(""),
+    icon: str = Form(""),
     csrf_token: str = Form(...),
     return_month: str = Form(""),
 ):
@@ -234,11 +320,38 @@ def update_bucket_budget(
     if not bucket:
         raise HTTPException(status_code=404, detail="Unknown bucket.")
     try:
-        services.buckets.update(bucket_id, bucket.name, _optional_budget_to_cents(monthly_budget), active=True)
+        services.buckets.update(
+            bucket_id,
+            name,
+            _optional_budget_to_cents(monthly_budget),
+            active=True,
+            icon=_icon_or_auto(icon),
+        )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse(_bucket_url(bucket_id, month, error=str(exc), edit=True), status_code=303)
     services.audit.record("bucket_updated")
-    return RedirectResponse(_home_url(month, bucket_id, "Budget saved"), status_code=303)
+    return RedirectResponse(_bucket_url(bucket_id, month, "Bucket saved"), status_code=303)
+
+
+@router.post("/buckets/{bucket_id}/delete")
+def delete_bucket(
+    bucket_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    return_month: str = Form(""),
+):
+    services = _services(request)
+    _require_csrf(request, csrf_token)
+    month = _month_or_current(return_month or None)
+    try:
+        name = services.buckets.delete(bucket_id)
+    except ValueError as exc:
+        return RedirectResponse(_home_url(month, error=str(exc)), status_code=303)
+    services.audit.record("bucket_deleted")
+    return RedirectResponse(
+        _home_url(month, message=f"Deleted {name}. Its transactions moved to Unknown."),
+        status_code=303,
+    )
 
 
 @router.post("/refresh-month")
@@ -255,11 +368,13 @@ def refresh_month(request: Request, month: str = Form(...), csrf_token: str = Fo
     except PlaidAPIError as exc:
         raise HTTPException(status_code=502, detail=f"Plaid refresh failed: {exc.error_code}") from exc
     services.audit.record("historical_backfill")
-    services.categorization.categorize_unassigned(1000)
+    categorized = services.categorization.categorize_unassigned()
     message = (
         f"Refreshed {selected_month}: {result.imported} posted transactions loaded; "
         f"ignored {result.ignored_pending} pending and {result.ignored_payments} payment/autopay"
     )
+    if categorized.memory_paused:
+        message += "; paused categorization (low memory), will finish on next sync"
     return RedirectResponse(_home_url(selected_month, message=message), status_code=303)
 
 

@@ -198,7 +198,7 @@ def sync_now(request: Request, csrf_token: str = Form(...)):
     except PlaidAPIError as exc:
         raise HTTPException(status_code=502, detail=f"Plaid sync failed: {exc.error_code}") from exc
     services.audit.record("transactions_synced")
-    categorized = services.categorization.categorize_unassigned(300)
+    categorized = services.categorization.categorize_unassigned()
     services.audit.record("categorization_run")
     message = (
         f"Sync complete: {result.added} added, {result.modified} modified, {result.removed} removed"
@@ -208,6 +208,8 @@ def sync_now(request: Request, csrf_token: str = Form(...)):
     )
     if categorized.ollama_unavailable:
         message += "; Ollama unavailable"
+    if categorized.memory_paused:
+        message += "; paused categorization (low memory), will finish on next sync"
     from urllib.parse import quote_plus
     return RedirectResponse(f"/settings?message={quote_plus(message)}", status_code=303)
 

@@ -19,6 +19,12 @@
       if (!window.confirm("Delete this transaction from PocketTrack? It will stay deleted after future Plaid syncs.")) event.preventDefault();
     });
   });
+  document.querySelectorAll('form[data-confirm-delete="bucket"]').forEach((form) => {
+    form.addEventListener("submit", (event) => {
+      const name = form.dataset.bucketName || "this bucket";
+      if (!window.confirm(`Delete ${name}? Its transactions stay in PocketTrack and move back to Unknown.`)) event.preventDefault();
+    });
+  });
   document.querySelectorAll('form[data-confirm-delete="asset"]').forEach((form) => {
     form.addEventListener("submit", (event) => {
       if (!window.confirm("Delete this asset from PocketTrack?")) event.preventDefault();

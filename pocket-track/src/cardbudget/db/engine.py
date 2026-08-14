@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
-from cardbudget.db.schema import CORE_SCHEMA_SQL, DEFAULT_BUCKETS, SCHEMA_VERSION
+from cardbudget.db.schema import ADDED_COLUMNS, CORE_SCHEMA_SQL, DEFAULT_BUCKETS, SCHEMA_VERSION
 from cardbudget.errors import DatabaseOpenError, EncryptionUnavailable
 
 Connector = Callable[[str], Any]
@@ -121,6 +121,7 @@ class Database:
         existed = self.path.exists()
         with self.transaction() as conn:
             conn.executescript(CORE_SCHEMA_SQL)
+            self._add_missing_columns(conn)
             now = _utc_now_iso()
             conn.execute(
                 "INSERT OR REPLACE INTO app_meta(key, value) VALUES ('schema_version', ?)",
@@ -166,6 +167,15 @@ class Database:
             raise EncryptionUnavailable(
                 "New database has a plaintext SQLite header; refusing to continue."
             )
+
+    @staticmethod
+    def _add_missing_columns(conn) -> None:
+        """Bring an existing database up to date with columns added post-release."""
+        for table, column, definition in ADDED_COLUMNS:
+            existing = {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            if not existing or column in existing:
+                continue
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def cipher_version(self) -> str | None:
         if not self.require_cipher:

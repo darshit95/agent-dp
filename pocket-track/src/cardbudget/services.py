@@ -94,6 +94,7 @@ def bootstrap_services(
         buckets=buckets,
         merchant_rules=merchant_rules,
         llm=ollama,
+        pace_seconds=settings.categorization_pace_seconds,
     )
     networth = NetWorthService(networth_repository, ollama)
 

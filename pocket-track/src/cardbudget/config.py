@@ -27,6 +27,12 @@ class Settings(BaseModel):
     password_min_length: int = Field(default=12, ge=10, le=64)
     plaid_environment: Literal["sandbox", "production"] = "production"
     ollama_model: str = Field(default="qwen3.5:4b", min_length=1, max_length=100, pattern=r"^[A-Za-z0-9._:/-]+$")
+    # Delay between consecutive local-LLM categorization calls. Each call is a
+    # blocking local inference request; on memory-constrained hardware, running
+    # hundreds of them back-to-back with no gap can peg the machine for minutes.
+    # A small pause lets the system breathe between calls without meaningfully
+    # slowing down a normal-sized sync.
+    categorization_pace_seconds: float = Field(default=0.35, ge=0.0, le=10.0)
 
     @field_validator("data_dir", mode="before")
     @classmethod
@@ -90,6 +96,11 @@ class Settings(BaseModel):
             ("POCKETTRACK_SESSION_IDLE_SECONDS", "CARDBUDGET_SESSION_IDLE_SECONDS", "session_idle_seconds"),
             ("POCKETTRACK_PLAID_ENVIRONMENT", "CARDBUDGET_PLAID_ENVIRONMENT", "plaid_environment"),
             ("POCKETTRACK_OLLAMA_MODEL", "CARDBUDGET_OLLAMA_MODEL", "ollama_model"),
+            (
+                "POCKETTRACK_CATEGORIZATION_PACE_SECONDS",
+                "CARDBUDGET_CATEGORIZATION_PACE_SECONDS",
+                "categorization_pace_seconds",
+            ),
         )
         for current, legacy, field_name in pairs:
             if current in os.environ:

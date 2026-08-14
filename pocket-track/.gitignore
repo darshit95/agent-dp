@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# PocketTrack runtime (PIDs, logs, local certificates)
+.runtime/
+
+# Local data, backups and secrets must never be committed
+*.ptbackup
+*.db
+*.db-journal
+preferences.json
+
+# macOS
+.DS_Store

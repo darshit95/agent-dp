@@ -39,12 +39,23 @@ class SessionRecord:
     expires_at: datetime
 
 
+class _KeepIcon:
+    """Sentinel: leave a bucket's stored icon untouched on update."""
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return "KEEP_ICON"
+
+
+KEEP_ICON = _KeepIcon()
+
+
 @dataclass(frozen=True)
 class BucketRecord:
     id: int
     name: str
     default_budget_cents: int | None
     active: bool
+    icon: str | None = None
 
 
 @dataclass(frozen=True)
@@ -110,6 +121,7 @@ class BudgetSummaryRecord:
     bucket_name: str
     budget_cents: int | None
     spent_cents: int
+    icon: str | None = None
 
 
 class UserRepository:
@@ -230,6 +242,8 @@ class BucketRepository:
     def __init__(self, db: Database) -> None:
         self.db = db
 
+    SYSTEM_BUCKET_NAME = "Unknown"
+
     @staticmethod
     def _record(row) -> BucketRecord:
         return BucketRecord(
@@ -237,42 +251,55 @@ class BucketRepository:
             name=str(row[1]),
             default_budget_cents=None if row[2] is None else int(row[2]),
             active=bool(row[3]),
+            icon=None if row[4] is None else str(row[4]),
         )
+
+    @staticmethod
+    def _clean_name(name: str) -> str:
+        clean = " ".join(name.strip().split())
+        if not clean or len(clean) > 80:
+            raise ValueError("Bucket name must be between 1 and 80 characters.")
+        return clean
+
+    @staticmethod
+    def _validate_budget(budget_cents: int | None) -> None:
+        if budget_cents is not None and budget_cents < 0:
+            raise ValueError("Budget cannot be negative.")
 
     def list_active(self) -> list[BucketRecord]:
         with self.db.connection() as conn:
             rows = conn.execute(
-                "SELECT id, name, default_budget_cents, active FROM buckets WHERE active = 1 ORDER BY id"
+                "SELECT id, name, default_budget_cents, active, icon FROM buckets WHERE active = 1 ORDER BY id"
             ).fetchall()
         return [self._record(row) for row in rows]
 
     def list_all(self) -> list[BucketRecord]:
         with self.db.connection() as conn:
             rows = conn.execute(
-                "SELECT id, name, default_budget_cents, active FROM buckets ORDER BY active DESC, id"
+                "SELECT id, name, default_budget_cents, active, icon FROM buckets ORDER BY active DESC, id"
             ).fetchall()
         return [self._record(row) for row in rows]
 
     def get(self, bucket_id: int) -> BucketRecord | None:
         with self.db.connection() as conn:
             row = conn.execute(
-                "SELECT id, name, default_budget_cents, active FROM buckets WHERE id = ?",
+                "SELECT id, name, default_budget_cents, active, icon FROM buckets WHERE id = ?",
                 (bucket_id,),
             ).fetchone()
         return None if not row else self._record(row)
 
-    def create(self, name: str, budget_cents: int | None) -> BucketRecord:
-        clean = " ".join(name.strip().split())
-        if not clean or len(clean) > 80:
-            raise ValueError("Bucket name must be between 1 and 80 characters.")
-        if budget_cents is not None and budget_cents < 0:
-            raise ValueError("Budget cannot be negative.")
+    def create(self, name: str, budget_cents: int | None, icon: str | None = None) -> BucketRecord:
+        clean = self._clean_name(name)
+        self._validate_budget(budget_cents)
         now = to_iso(utc_now())
         try:
             with self.db.transaction() as conn:
                 cur = conn.execute(
-                    "INSERT INTO buckets(name, default_budget_cents, active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)",
-                    (clean, budget_cents, now, now),
+                    """
+                    INSERT INTO buckets(name, default_budget_cents, active, icon, created_at, updated_at)
+                    VALUES (?, ?, 1, ?, ?, ?)
+                    """,
+                    (clean, budget_cents, icon, now, now),
                 )
                 bucket_id = int(cur.lastrowid)
         except Exception as exc:
@@ -281,17 +308,41 @@ class BucketRepository:
             raise
         return self.get(bucket_id)  # type: ignore[return-value]
 
-    def update(self, bucket_id: int, name: str, budget_cents: int | None, active: bool = True) -> None:
-        clean = " ".join(name.strip().split())
-        if not clean or len(clean) > 80:
-            raise ValueError("Bucket name must be between 1 and 80 characters.")
-        if budget_cents is not None and budget_cents < 0:
-            raise ValueError("Budget cannot be negative.")
+    def update(
+        self,
+        bucket_id: int,
+        name: str,
+        budget_cents: int | None,
+        active: bool = True,
+        icon: str | None | object = KEEP_ICON,
+    ) -> None:
+        """Update a bucket. The icon is left alone unless one is passed explicitly."""
+        clean = self._clean_name(name)
+        self._validate_budget(budget_cents)
+        existing = self.get(bucket_id)
+        if not existing:
+            raise ValueError("Unknown bucket.")
+        # Uncategorized spending is matched to this bucket by name, in
+        # monthly_summary and in the categorization fallback. Renaming it would
+        # silently drop those transactions out of every bucket.
+        if (
+            existing.name.casefold() == self.SYSTEM_BUCKET_NAME.casefold()
+            and clean.casefold() != self.SYSTEM_BUCKET_NAME.casefold()
+        ):
+            raise ValueError(f"The {self.SYSTEM_BUCKET_NAME} bucket cannot be renamed.")
+
+        fields = ["name = ?", "default_budget_cents = ?", "active = ?"]
+        params: list[object] = [clean, budget_cents, 1 if active else 0]
+        if icon is not KEEP_ICON:
+            fields.append("icon = ?")
+            params.append(icon)
+        fields.append("updated_at = ?")
+        params.extend([to_iso(utc_now()), bucket_id])
         try:
             with self.db.transaction() as conn:
                 cur = conn.execute(
-                    "UPDATE buckets SET name = ?, default_budget_cents = ?, active = ?, updated_at = ? WHERE id = ?",
-                    (clean, budget_cents, 1 if active else 0, to_iso(utc_now()), bucket_id),
+                    f"UPDATE buckets SET {', '.join(fields)} WHERE id = ?",
+                    tuple(params),
                 )
                 if cur.rowcount == 0:
                     raise ValueError("Unknown bucket.")
@@ -311,6 +362,34 @@ class BucketRepository:
             if cur.rowcount == 0:
                 raise ValueError("Unknown bucket.")
 
+    def delete(self, bucket_id: int) -> str:
+        """Delete a bucket and return its name.
+
+        Transactions are kept: their bucket_id is cleared, which puts them back in
+        Unknown. Merchant rules pointing at the bucket are dropped, otherwise the
+        next sync would recreate spending in a bucket the user removed. The Unknown
+        bucket itself cannot be deleted — categorization falls back to it.
+        """
+        with self.db.transaction() as conn:
+            row = conn.execute("SELECT name FROM buckets WHERE id = ?", (bucket_id,)).fetchone()
+            if not row:
+                raise ValueError("Unknown bucket.")
+            name = str(row[0])
+            if name.casefold() == self.SYSTEM_BUCKET_NAME.casefold():
+                raise ValueError("The Unknown bucket is required and cannot be deleted.")
+            now = to_iso(utc_now())
+            conn.execute(
+                """
+                UPDATE transactions
+                   SET bucket_id = NULL, classification_source = 'bucket_deleted', updated_at = ?
+                 WHERE bucket_id = ?
+                """,
+                (now, bucket_id),
+            )
+            conn.execute("DELETE FROM merchant_rules WHERE bucket_id = ?", (bucket_id,))
+            conn.execute("DELETE FROM buckets WHERE id = ?", (bucket_id,))
+        return name
+
     def monthly_summary(self, month: str) -> list[BudgetSummaryRecord]:
         # Validate YYYY-MM without importing locale/timezone concerns.
         datetime.strptime(month, "%Y-%m")
@@ -318,19 +397,26 @@ class BucketRepository:
             rows = conn.execute(
                 """
                 SELECT b.id, b.name, b.default_budget_cents,
-                       COALESCE(SUM(CASE WHEN t.pending = 0 AND t.is_removed = 0 THEN t.amount_cents ELSE 0 END), 0)
+                       COALESCE(SUM(CASE WHEN t.pending = 0 AND t.is_removed = 0 THEN t.amount_cents ELSE 0 END), 0),
+                       b.icon
                 FROM buckets b
                 LEFT JOIN transactions t
                   ON (t.bucket_id = b.id OR (t.bucket_id IS NULL AND b.name = 'Unknown' COLLATE NOCASE))
                  AND t.budget_date LIKE ?
                 WHERE b.active = 1
-                GROUP BY b.id, b.name, b.default_budget_cents
+                GROUP BY b.id, b.name, b.default_budget_cents, b.icon
                 ORDER BY b.id
                 """,
                 (f"{month}-%",),
             ).fetchall()
         return [
-            BudgetSummaryRecord(int(r[0]), str(r[1]), None if r[2] is None else int(r[2]), int(r[3]))
+            BudgetSummaryRecord(
+                int(r[0]),
+                str(r[1]),
+                None if r[2] is None else int(r[2]),
+                int(r[3]),
+                None if r[4] is None else str(r[4]),
+            )
             for r in rows
         ]
 
@@ -352,6 +438,7 @@ class AuditRepository:
         "bucket_created",
         "bucket_updated",
         "bucket_deactivated",
+        "bucket_deleted",
         "categorization_run",
         "merchant_rule_deleted",
         "asset_created",

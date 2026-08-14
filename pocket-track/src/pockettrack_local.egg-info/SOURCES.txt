@@ -8,6 +8,7 @@ src/cardbudget/backup.py
 src/cardbudget/cli.py
 src/cardbudget/config.py
 src/cardbudget/errors.py
+src/cardbudget/icons.py
 src/cardbudget/networth.py
 src/cardbudget/services.py
 src/cardbudget/auth/__init__.py
@@ -26,6 +27,7 @@ src/cardbudget/plaid/client.py
 src/cardbudget/plaid/routes.py
 src/cardbudget/plaid/service.py
 src/cardbudget/scheduler/__init__.py
+src/cardbudget/scheduler/autostart.py
 src/cardbudget/scheduler/macos.py
 src/cardbudget/security/__init__.py
 src/cardbudget/security/csrf.py
@@ -39,6 +41,7 @@ src/cardbudget/web/static/app.css
 src/cardbudget/web/static/app.js
 src/cardbudget/web/static/plaid.js
 src/cardbudget/web/templates/base.html
+src/cardbudget/web/templates/bucket.html
 src/cardbudget/web/templates/buckets.html
 src/cardbudget/web/templates/dashboard.html
 src/cardbudget/web/templates/login.html

@@ -7,12 +7,24 @@ APP_PID_FILE="$RUNTIME/pockettrack.pid"
 OLLAMA_PID_FILE="$RUNTIME/ollama.pid"
 APP_LOG="$RUNTIME/pockettrack.log"
 OLLAMA_LOG="$RUNTIME/ollama.log"
+APP_LOG_DIR="$HOME/.pockettrack/logs"
 HOSTNAME_LOCAL="my-pocket-track"
 CADDY_ADMIN="127.0.0.1:2020"
+CADDY_LABEL="com.pockettrack.caddy"
+CADDY_PLIST="/Library/LaunchDaemons/${CADDY_LABEL}.plist"
+CADDY_CONFIG_DIR="/Library/Application Support/PocketTrack"
+CADDY_CONFIG="${CADDY_CONFIG_DIR}/Caddyfile"
 MODEL="${POCKETTRACK_OLLAMA_MODEL:-qwen3.5:4b}"
 
 mkdir -p "$RUNTIME"
 chmod 700 "$RUNTIME"
+
+# Make the package importable no matter what state the venv's .pth file is in.
+# A checkout inside a cloud-synced folder (iCloud Desktop, Dropbox, ...) can get
+# its .pth marked hidden, which Python then skips - the venv looks installed but
+# "import cardbudget" fails. Every command below, and the server we launch,
+# inherits this.
+export PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
 
 say() { printf '\n\033[1;34mPocketTrack\033[0m  %s\n' "$*"; }
 fail() { printf '\n\033[1;31mERROR\033[0m  %s\n' "$*" >&2; exit 1; }
@@ -48,8 +60,11 @@ VENV_PYTHON="$VENV/bin/python"
 VENV_POCKETTRACK="$VENV/bin/pockettrack"
 
 
+VENV_FRESHLY_BUILT=0
+
 create_venv() {
     say "Creating fresh Python virtual environment"
+    VENV_FRESHLY_BUILT=1
 
     rm -rf "$VENV"
 
@@ -71,6 +86,14 @@ install_project() {
     # Always install PocketTrack itself before tests or CLI commands.
     "$VENV_PYTHON" -m pip install \
         -e "${ROOT}[dev]"
+}
+
+
+unhide_venv_metadata() {
+    # Undo the "hidden" flag a cloud-sync agent may have put on the venv's .pth
+    # files, so PocketTrack also works when run outside this script.
+    [[ -d "$VENV" ]] || return 0
+    chflags nohidden "$VENV"/lib/python*/site-packages/*.pth 2>/dev/null || true
 }
 
 
@@ -100,6 +123,8 @@ else
     install_project
 fi
 
+unhide_venv_metadata
+
 
 # ---------------------------------------------------------------
 # Self-heal a corrupt/stale venv.
@@ -109,6 +134,7 @@ if ! venv_is_healthy; then
     say "Existing virtual environment is unhealthy; rebuilding automatically"
 
     create_venv
+    unhide_venv_metadata
 fi
 
 
@@ -159,8 +185,13 @@ from cardbudget.cli import main
 print("PocketTrack application import: OK")
 PYAPPVERIFY
 
-say "Running tests"
-"$VENV_PYTHON" -m pytest -q "$ROOT/tests"
+if [[ "$VENV_FRESHLY_BUILT" == "1" ]]; then
+  say "Running tests"
+  "$VENV_PYTHON" -m pytest -q "$ROOT/tests"
+else
+  say "Skipping test suite (existing, healthy virtual environment)"
+  echo "Run '.venv/bin/python -m pytest -q tests' manually after pulling code changes."
+fi
 
 say "Running security diagnostics"
 "$VENV_POCKETTRACK" doctor
@@ -282,31 +313,90 @@ rm -f "$APP_PID_FILE"
 export POCKETTRACK_PLAID_ENVIRONMENT="${POCKETTRACK_PLAID_ENVIRONMENT:-production}"
 export POCKETTRACK_OLLAMA_MODEL="$MODEL"
 
-nohup "$VENV_POCKETTRACK" serve >"$APP_LOG" 2>&1 &
-NEW_PID=$!
-
-echo "$NEW_PID" > "$APP_PID_FILE"
-chmod 600 "$APP_PID_FILE"
-
-echo "Started PocketTrack backend (PID $NEW_PID)."
+# The app runs as a LaunchAgent, not a bare nohup process, so it comes back after
+# a restart and restarts itself if it crashes. It must be a user agent (not a
+# root daemon) because its secrets live in the user's login Keychain.
+# KeepAlive means killing the process is not enough to stop it - ./stop.sh
+# unloads the agent, which is the supported way to shut PocketTrack down.
+if "$VENV_POCKETTRACK" install-autostart; then
+  echo "PocketTrack will start automatically when you log in."
+else
+  fail "PocketTrack autostart agent could not be loaded. See $APP_LOG"
+fi
 
 for _ in {1..30}; do
   if curl -fsS --max-time 2 http://127.0.0.1:8000/ >/dev/null 2>&1; then break; fi
   sleep 1
 done
 curl -fsS --max-time 2 http://127.0.0.1:8000/ >/dev/null 2>&1 || {
-  tail -80 "$APP_LOG" >&2 || true
+  tail -80 "$APP_LOG_DIR/app-error.log" >&2 2>/dev/null || true
   fail "PocketTrack backend did not become ready."
 }
 
 say "Starting local HTTPS"
-# PocketTrack uses its own Caddy admin endpoint so it does not stop or reload an unrelated Caddy instance.
+# Caddy needs root to bind 443, so it is a system LaunchDaemon rather than a user
+# agent. That also means HTTPS is up from boot, before anyone logs in.
 sudo "$CADDY" stop --address "$CADDY_ADMIN" >/dev/null 2>&1 || true
-sudo "$CADDY" start --config "$ROOT/Caddyfile" --adapter caddyfile
+sudo launchctl bootout system/"$CADDY_LABEL" >/dev/null 2>&1 || true
+
+# macOS blocks background/root processes from reading inside Desktop, Documents,
+# and Downloads unless the specific binary has been granted Full Disk Access -
+# regardless of Unix file permissions. A checkout under any of those folders
+# (as opposed to e.g. ~/code or /opt) would make Caddy fail to read
+# "$ROOT/Caddyfile" with "operation not permitted" and silently loop-crash.
+# Copying the config to a system path outside those protected folders sidesteps
+# that for every user, no matter where they cloned the repo.
+sudo mkdir -p "$CADDY_CONFIG_DIR"
+sudo cp "$ROOT/Caddyfile" "$CADDY_CONFIG"
+sudo chown root:wheel "$CADDY_CONFIG"
+sudo chmod 644 "$CADDY_CONFIG"
+
+# The Caddyfile points Caddy's storage (its local CA root + issued certs) at
+# this fixed path explicitly - see the comment in Caddyfile for why. Lock it
+# down since it holds the local CA's private key, not just non-secret config.
+sudo mkdir -p "$CADDY_CONFIG_DIR/data"
+sudo chown -R root:wheel "$CADDY_CONFIG_DIR/data"
+sudo chmod 700 "$CADDY_CONFIG_DIR/data"
+
+sudo tee "$CADDY_PLIST" >/dev/null <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>${CADDY_LABEL}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>${CADDY}</string>
+        <string>run</string>
+        <string>--config</string>
+        <string>${CADDY_CONFIG}</string>
+        <string>--adapter</string>
+        <string>caddyfile</string>
+    </array>
+    <key>RunAtLoad</key><true/>
+    <key>KeepAlive</key><true/>
+    <key>StandardOutPath</key><string>${RUNTIME}/caddy.log</string>
+    <key>StandardErrorPath</key><string>${RUNTIME}/caddy.log</string>
+</dict>
+</plist>
+PLIST
+
+sudo chown root:wheel "$CADDY_PLIST"
+sudo chmod 644 "$CADDY_PLIST"
+sudo launchctl bootstrap system "$CADDY_PLIST"
+
+for _ in {1..20}; do
+  curl -fsS --max-time 2 "http://$CADDY_ADMIN/config/" >/dev/null 2>&1 && break
+  sleep 1
+done
 sudo "$CADDY" trust --address "$CADDY_ADMIN" >/dev/null
 
-say "Installing daily 8:00 AM refresh"
-"$VENV_POCKETTRACK" install-scheduler --hour 8 >/dev/null || echo "Warning: daily scheduler could not be loaded. You can retry from Settings/CLI."
+say "Installing automatic refresh (8:00 AM and 8:00 PM)"
+if "$VENV_POCKETTRACK" install-scheduler --hours 8,20; then
+  "$VENV_POCKETTRACK" scheduler-status || true
+else
+  echo "Warning: the sync scheduler could not be loaded. Retry later with: pockettrack install-scheduler --hours 8,20"
+fi
 
 say "Ready"
 echo "Open:  https://${HOSTNAME_LOCAL}"
