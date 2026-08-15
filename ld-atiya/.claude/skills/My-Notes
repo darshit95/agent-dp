@@ -1,0 +1,8 @@
+High Traffic (100-1000 req/s)
+┌────────────────────────────┐
+│  Distributed Architecture  │
+│  ├─ CDN for static routes  │
+│  ├─ Request queue (Kafka)  │
+│  ├─ Worker pool (20 pods)  │
+│  ├─ Distributed cache      │
+│  └─ Rate limiting          │
