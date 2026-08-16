@@ -11,6 +11,20 @@
 /go-atiya
 ```
 
+### Running the code (from learn-and-build/)
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev]'
+
+# Run the test suite
+python -m pytest -q
+
+# Configure LLM provider keys (see .env.example)
+cp .env.example .env   # then fill in GEMINI_API_KEY / GROQ_API_KEY
+```
+
 ---
 
 ## What Makes This Agentic (Not Just Automation)
@@ -52,13 +66,13 @@ learn-and-build/
 │   └── ...
 │
 ├── src/                   # Implementation (created as you build)
-│   ├── llm/              # LLM gateway, prompts, caching
+│   ├── llm/              # LLM gateway (done), prompts, caching
 │   ├── agent/            # Agent orchestration
 │   ├── database/         # PostgreSQL models
 │   ├── ui/               # Streamlit interface
 │   └── ...
 │
-├── tests/                 # Test suites
+├── tests/                 # Test suites (mirrors src/ layout)
 ├── evals/                 # Evaluation datasets
 └── .claude/
     └── skills/

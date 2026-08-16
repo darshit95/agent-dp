@@ -20,7 +20,6 @@ I implement production-grade Atiya pricing agent. Simple and focused.
 3. **Suggest learning** - Throw learning command for required concept
 4. **Trust you** - When you say "done learning", I implement
 5. **Build production code** - Focus on perfect implementation
-6. **Explain visually** - After a medium/large implementation, walk through what was built with a diagram
 
 ## How It Works
 
@@ -31,15 +30,13 @@ Identify next Atiya implementation task
   ↓
 Suggest: /learn-and-implement [concept]
   ↓
-User learns (tracked separately in learn-and-build/learning-docs/plan_and_progress/LEARNING_PLAN.md)
+User learns (tracked separately in LEARNING_PLAN.md)
   ↓
 User says: "done" or "learned" or "ready"
   ↓
 I implement production code for Atiya
   ↓
 Update STATE.md with Atiya code progress
-  ↓
-Explain the implementation with a visual/flow diagram
 ```
 
 ---
@@ -55,7 +52,7 @@ Read:
 - **DESIGN.md** - Atiya architecture and design decisions
 - **REQUIREMENTS.md** - Product requirements (if exists)
 
-**Do NOT read learn-and-build/learning-docs/plan_and_progress/LEARNING_PLAN.md** - Learning tracking is separate, managed by `/learn-and-implement`
+**Do NOT read LEARNING_PLAN.md** - Learning tracking is separate, managed by `/learn-and-implement`
 
 ### 2. Determine Next Implementation Task
 
@@ -111,24 +108,10 @@ After implementation, update STATE.md with **Atiya code progress only**:
 - Update quality gate status (code metrics, not learning)
 
 **Do NOT update:**
-- Learning progress (that's in learn-and-build/learning-docs/plan_and_progress/LEARNING_PLAN.md)
-- Subskill completion (that's in learn-and-build/learning-docs/plan_and_progress/LEARNING_PROGRESS.md)
+- Learning progress (that's in LEARNING_PLAN.md)
+- Subskill completion (that's in LEARNING_PROGRESS.md)
 
 **STATE.md tracks:** What Atiya code exists, what works, what's next to build
-
-### 6. Explain the Implementation Visually
-
-**Always do this after any medium-to-big implementation** - a new module, a new architectural piece, anything spanning multiple files or introducing a new concept. Skip it only for trivial changes (a one-line fix, a config tweak, a typo).
-
-Include, right after the STATE.md update, in the same response:
-- **A flow/architecture diagram** (ASCII in-chat is fine for most cases; use an Artifact with a Mermaid diagram if the shape is genuinely complex - e.g. multi-agent orchestration, a stateful loop, several new services wired together)
-- **What was added** - the new files/components and how they connect to each other
-- **How it works** - walk the diagram: what happens on a call, what the failure/fallback paths are
-- **What use case it solves** - the concrete problem this removes or unblocks
-- **How it relates to Atiya** - tie it back to DESIGN.md's architecture (which agent/layer consumes this, which ADR it implements) and to STATE.md's phase/task list
-- **What's explicitly NOT covered yet** - so scope boundaries stay visible across sessions
-
-This is for the user's understanding and retention, not just a progress log - explain it the way you'd walk a teammate through a PR, not the way you'd write a changelog entry.
 
 ---
 
@@ -150,4 +133,3 @@ I am your Atiya builder:
 - ✅ Track implementation progress only
 - ✅ No learning state tracking
 - ✅ Resume across sessions via STATE.md
-- ✅ Explain every medium/big implementation with a diagram, tied back to Atiya's architecture

@@ -6,3 +6,10 @@ High Traffic (100-1000 req/s)
 │  ├─ Worker pool (20 pods)  │
 │  ├─ Distributed cache      │
 │  └─ Rate limiting          │
+
+
+Task-specific model routing (a "smart"/"fast" logical-name table) — not needed until multiple agents need different quality/cost tiers.
+Quota tracking against Gemini's ~1500 req/day budget — currently the gateway reacts to a 429 after the fact rather than pre-emptively throttling.
+The Prompt System (src/llm/prompts/) that will actually construct the Message lists passed into generate() — next task.
+Structured Outputs / Pydantic response validation — task 3.
+Aggregated observability (metrics dashboard, cost totals over time) — right now it's per-call logging only, task 4 builds the aggregation layer.

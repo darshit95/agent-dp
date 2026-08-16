@@ -1,0 +1,23 @@
+[project]
+name = "atiya"
+version = "0.1.0"
+description = "Atiya - AI Revenue Management System for independent motels"
+requires-python = ">=3.11"
+dependencies = [
+    "litellm>=1.51.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
