@@ -30,8 +30,8 @@ Do NOT assume or guess the folder path.
 
 ## What It Does
 
-**Input:** Folder with `*-slides.md` + `<topic>.md`  
-**Output:** `enhanced-slides.md` + `presentation.pptx`
+**Input:** Folder with `*-slides.md` + `complete-learning.md` or `<topic>.md`  
+**Output:** `<concept>-presentation.html` (standalone HTML presentation)
 
 ## Intelligence Features
 
@@ -73,9 +73,10 @@ Generates Mermaid diagrams automatically for:
 - Generate speaker notes with implementation details
 
 **Step 3: Generate**
-- Create `enhanced-slides.md` (Markdown with Mermaid)
-- Generate `presentation.pptx` using Marp CLI
+- Create `enhanced-slides.md` (Markdown with Mermaid) as reference
+- Generate `<concept>-presentation.html` (standalone HTML presentation)
 - Output both files to the source folder
+- Extract concept name from directory name (e.g., `model-provider-abstraction` → `model-provider-abstraction-presentation.html`)
 
 ## Example
 
@@ -92,10 +93,63 @@ CLOSED → OPEN → HALF-OPEN
 
 ## Requirements
 
+**Python 3** - Already available in your environment
+
+No additional tools needed! The skill generates a standalone HTML presentation.
+
+## Output Files
+
+After skill completes:
+
+1. **`<concept>-presentation.html`** - Interactive HTML presentation
+   - Open in any browser (Firefox, Chrome, Edge)
+   - Full-featured with Mermaid diagrams
+   - Speaker notes included
+   - Keyboard navigation
+   
+2. **`enhanced-slides.md`** - Markdown source with Mermaid diagrams
+   - Backup/reference format
+   - Can be edited and regenerated
+
+## How to Use the Presentation
+
+**Present directly:**
 ```bash
-# Install Marp CLI
-npm install -g @marp-team/marp-cli
+# Open in browser
+firefox <concept>-presentation.html
 ```
+
+**Controls:**
+- Arrow keys / Space: Navigate slides
+- `N`: Toggle speaker notes on/off
+- `F`: Fullscreen mode
+- Home/End: Jump to first/last slide
+
+**Convert to Google Slides (if needed):**
+1. Open HTML in browser → Print (`Ctrl+P`)
+2. Save as PDF (Landscape, No margins)
+3. Upload PDF to Google Drive
+4. Open with Google Slides
+
+## Implementation Notes
+
+**For Claude executing this skill:**
+
+After creating `enhanced-slides.md`, use the provided generator script to create the HTML presentation:
+
+```bash
+/home/test/reg/bin/python /home/test/reg/agent-dp/ld-atiya/.claude/skills/create-presentation/generate-html-presentation.py <folder_path>
+```
+
+The script will:
+1. Read `enhanced-slides.md` from the provided folder
+2. Extract the concept name from the directory name
+3. Generate `<concept>-presentation.html` in the same folder
+4. Include all speaker notes, Mermaid diagrams, and interactive features
+
+Example:
+- Folder: `/path/to/model-provider-abstraction/`
+- Output: `/path/to/model-provider-abstraction/model-provider-abstraction-presentation.html`
 
 ## Ready?
 
@@ -103,4 +157,4 @@ npm install -g @marp-team/marp-cli
 /create-presentation /path/to/folder
 ```
 
-Upload the generated `presentation.pptx` to Google Drive and open with Google Slides to edit!
+The skill will create a complete HTML presentation ready to present!
