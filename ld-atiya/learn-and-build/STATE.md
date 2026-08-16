@@ -1,12 +1,12 @@
 # Current Project State
 
-**Last updated:** 2026-08-14
+**Last updated:** 2026-08-15
 
 ---
 
 ## Current Milestone
 
-**Phase 0: Project Setup COMPLETE** - Ready to begin Phase 1 (28-week extended track)
+**Phase 1: Foundations - LLM Gateway COMPLETE.** Next up: Prompt System.
 
 ---
 
@@ -28,11 +28,15 @@
 - [x] .claude/skills/finish-phase/SKILL.md
 - [x] learning-docs/index.md (learning documentation structure)
 
+### Phase 1 In Progress
+- [x] `pyproject.toml` (src-layout package `atiya`, installable via `pip install -e '.[dev]'`)
+- [x] LLM Gateway (`src/llm/`) — see "Atiya Code Structure" below
+
 ---
 
 ## In Progress
 
-None - Phase 0 complete. Ready to begin Phase 1.
+Phase 1 - Foundations. LLM Gateway done, Prompt System next.
 
 ---
 
@@ -49,6 +53,12 @@ None yet.
 ---
 
 ## Recently Completed
+
+**2026-08-15:** LLM Gateway implemented (Phase 1, task 1/4)
+- **Files:** `pyproject.toml`, `.env.example`, `.gitignore`, `src/llm/{__init__,config,types,exceptions,circuit_breaker,gateway}.py`, `tests/unit/llm/{test_gateway,test_circuit_breaker}.py`
+- **What it does:** `LLMGateway.generate(messages)` calls Gemini (primary) via LiteLLM, falling back to Groq only on transient failure or an open circuit breaker (ADR-003). Transient errors (rate limit/timeout/5xx) retry with exponential backoff + jitter; permanent errors (auth/bad request/content policy) skip straight to the next provider. Each provider has its own circuit breaker (closed/open/half-open). Every response is normalized to `LLMResponse` (content, model, provider, token counts, `cost_usd` via `litellm.completion_cost`, `latency_ms`, `fallback_used`, `providers_tried`). Exhausting every provider raises `AllProvidersFailedError` — the gateway never auto-upgrades to a paid tier.
+- **Tests:** 14/14 passing (`python -m pytest -q`) — success path, fallback on transient error, no-retry on permanent error, all-providers-failed, missing API key skip, open-circuit skip, retry-then-succeed, cost-lookup-failure defaults to $0, plus circuit breaker state machine.
+- **Not yet done:** task-specific model routing (multi-model tables), rate/quota tracking against the ~1500 req/day Gemini free-tier budget, structured logging sink beyond stdlib `logging`, prompt system integration — these are later Phase 1 tasks (Prompt System, Structured Outputs, Observability) or explicitly out of scope for the gateway itself.
 
 **2026-08-15:** Dual-Track Learning Strategy Finalized
 - **Learning tracking**: LEARNING_PLAN.md (skill-level) + LEARNING_PROGRESS.md (subskill-level)
@@ -80,12 +90,9 @@ None yet.
 - `/go-atiya` will suggest next implementation task based on learned concepts
 
 **Next to implement (when ready):**
-1. LLM Gateway (`src/llm/gateway.py`)
-   - LiteLLM integration with Gemini + Groq fallback
-   - Provider abstraction layer
-   - Cost and latency tracking
+1. ~~LLM Gateway (`src/llm/gateway.py`)~~ ✅ Done 2026-08-15 — see "Atiya Code Structure"
 
-2. Prompt System (`src/llm/prompts/`)
+2. Prompt System (`src/llm/prompts/`) — **next**
    - Agent profiles for pricing agents
    - System prompts for each agent type
 
@@ -99,17 +106,17 @@ None yet.
    - Latency metrics
 
 **Phase 1 Quality Gate (for Atiya implementation):**
-- [ ] LLM gateway working with provider fallback
-- [ ] Single LLM call latency <2s (p95)
+- [x] LLM gateway working with provider fallback
+- [ ] Single LLM call latency <2s (p95) — not yet measured against a real API key
 - [ ] Structured output validation 100% success
-- [ ] All LLM calls logged with cost tracking
-- [ ] Tests passing
+- [ ] All LLM calls logged with cost tracking — logging done in the gateway; no aggregation/dashboard yet
+- [x] Tests passing (14/14, `python -m pytest -q`)
 
 ---
 
 ## Current Evaluation
 
-**No baseline yet** - No Atiya code implemented.
+**LLM Gateway landed, no live-traffic baseline yet** (tests use mocked LiteLLM calls — no real Gemini/Groq API key has been exercised against it).
 
 **Metrics to track (when implementation starts):**
 - LLM API latency
@@ -122,19 +129,34 @@ None yet.
 ## Atiya Code Structure
 
 **Created:**
-- None yet (Phase 0 was planning only)
-
-**Planned Structure:**
 ```
-atiya/
+learn-and-build/
+├── pyproject.toml          # src-layout package "atiya", pip install -e '.[dev]'
+├── .env.example             # GEMINI_API_KEY / GROQ_API_KEY / tuning knobs
+├── .gitignore
 ├── src/
-│   ├── llm/           # LLM gateway, prompts, schemas
-│   ├── agent/         # Agent orchestration
-│   ├── database/      # State management
-│   ├── observability/ # Logging, metrics
-│   └── api/           # FastAPI endpoints
-├── tests/             # Test suite
-└── requirements.txt   # Dependencies
+│   └── llm/
+│       ├── __init__.py       # public exports
+│       ├── config.py         # GatewayConfig.from_env() — provider chain + retry/circuit knobs
+│       ├── types.py          # Message, Role, LLMResponse
+│       ├── exceptions.py     # ProviderError (Transient/Permanent), AllProvidersFailedError
+│       ├── circuit_breaker.py# per-provider CLOSED/OPEN/HALF_OPEN state machine
+│       └── gateway.py        # LLMGateway.generate() — the fallback chain itself
+└── tests/
+    └── unit/llm/
+        ├── test_gateway.py         # 9 tests
+        └── test_circuit_breaker.py # 5 tests
+```
+
+**Planned (not yet created):**
+```
+├── src/
+│   ├── llm/prompts/    # Prompt System (next task)
+│   ├── llm/schemas/    # Structured Outputs
+│   ├── agent/          # Agent orchestration
+│   ├── database/       # State management
+│   ├── observability/  # Logging, metrics aggregation
+│   └── api/             # FastAPI endpoints
 ```
 
 ---
