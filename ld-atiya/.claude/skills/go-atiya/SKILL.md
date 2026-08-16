@@ -30,7 +30,7 @@ Identify next Atiya implementation task
   ↓
 Suggest: /learn-and-implement [concept]
   ↓
-User learns (tracked separately in LEARNING_PLAN.md)
+User learns (tracked separately in learn-and-build/learning-docs/plan_and_progress/LEARNING_PLAN.md)
   ↓
 User says: "done" or "learned" or "ready"
   ↓
@@ -52,7 +52,7 @@ Read:
 - **DESIGN.md** - Atiya architecture and design decisions
 - **REQUIREMENTS.md** - Product requirements (if exists)
 
-**Do NOT read LEARNING_PLAN.md** - Learning tracking is separate, managed by `/learn-and-implement`
+**Do NOT read learn-and-build/learning-docs/plan_and_progress/LEARNING_PLAN.md** - Learning tracking is separate, managed by `/learn-and-implement`
 
 ### 2. Determine Next Implementation Task
 
@@ -108,8 +108,8 @@ After implementation, update STATE.md with **Atiya code progress only**:
 - Update quality gate status (code metrics, not learning)
 
 **Do NOT update:**
-- Learning progress (that's in LEARNING_PLAN.md)
-- Subskill completion (that's in LEARNING_PROGRESS.md)
+- Learning progress (that's in learn-and-build/learning-docs/plan_and_progress/LEARNING_PLAN.md)
+- Subskill completion (that's in learn-and-build/learning-docs/plan_and_progress/LEARNING_PROGRESS.md)
 
 **STATE.md tracks:** What Atiya code exists, what works, what's next to build
 

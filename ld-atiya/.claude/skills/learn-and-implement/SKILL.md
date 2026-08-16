@@ -24,16 +24,36 @@ I am your AI engineering expert. Tell me what concept you want to master, and I'
 
 ## How It Works
 
-1. **Auto-continuation**: Read learning-docs/plan_and_progress/LEARNING_PLAN.md checklist → Continue from last learned skill
+1. **Auto-continuation**: Read learn-and-build/learning-docs/plan_and_progress/LEARNING_PLAN.md checklist → Continue from last learned skill
 2. **Teach deeply** through conversation, explanations, and answering your questions
 3. **Go deep** - ask me anything, I'll explain in detail
 4. **Capture everything** in learning documents (including our Q&A)
 5. **Create slides** with all important points for quick revision
-6. **Update checklist** in learning-docs/plan_and_progress/LEARNING_PLAN.md after completion
+6. **Update checklist** in learn-and-build/learning-docs/plan_and_progress/LEARNING_PLAN.md after completion
+
+## Two-Track Learning Strategy
+
+This skill teaches concepts for **TWO production systems**:
+
+### Track 1: AI Concepts → Atiya (Aspects 1-23 Only)
+- **Your role:** Study AI/agentic concepts theoretically using Atiya pricing domain as reference
+- **Implementation:** `/go-atiya` skill builds production Atiya in separate sessions
+- **Coverage:** All 28 skills, pure theoretical mastery
+- **Result:** Deep understanding of AI concepts + production Atiya (via `/go-atiya`)
+
+### Track 2: Claude Code → colo-flux (Aspect 26 Only, for 🔷 Skills)
+- **Your role:** Learn Claude Code patterns + get implementation instructions
+- **Implementation:** YOU vibe code in separate Claude session to build colo-flux
+- **Coverage:** 10 🔷 skills with Claude Code topics
+- **Result:** Master Claude Code tooling + production colo-flux (you built it)
+
+**Key Principle:** This skill teaches theory. Implementation happens in separate sessions (`/go-atiya` for Atiya, your own sessions for colo-flux).
+
+---
 
 ## Learning Framework
 
-### Aspects 1-23: Core Learning (Always)
+### Aspects 1-23: Core Theoretical Learning (All Skills)
 Apply to EACH subskill:
 
 | # | Aspect | What You'll Learn |
@@ -62,10 +82,22 @@ Apply to EACH subskill:
 | 22 | **Real-World Design Decisions** | What alternatives exist and why would you choose this approach over another? |
 | 23 | **Production Anti-Patterns** | What implementations look reasonable but cause problems at scale? |
 
-### Aspect 26: Claude Code Learning (Only for 🔷 Skills)
-After learning all subskills, study how Claude Code implements this concept.
+### Aspect 26: Claude Code Learning + Implementation Instructions (Only for 🔷 Skills)
 
-**Note:** Implementation (Aspect 24) and Testing (Aspect 25) are handled by `/go-atiya` skill during build phase.
+**For 10 skills marked with 🔷:**
+
+1. **Teach:** How Claude Code implements this concept (patterns, tools, APIs)
+2. **Provide:** Clear implementation instructions for building in colo-flux
+3. **Instruct:** Tell user to open separate Claude session and vibe code to implement
+4. **Document:** User marks `[x]` after theory learned + implementation complete
+
+**colo-flux Location:** `~/reg/pa_regression_hook/tools/colo-flux/`
+
+**Completion Criteria:**
+- ✅ Theory learned (Claude Code patterns understood)
+- ✅ Implementation instructions provided
+- ✅ User implemented in colo-flux (separate session)
+- ✅ Tested and working
 
 ## Teaching Style: Clarity Over Code
 
@@ -139,20 +171,20 @@ When creating learning documents and slides, follow these principles:
 
 **If user provides skill name:**
 - Use that skill
-- Find current subskill progress in learning-docs/plan_and_progress/LEARNING_PROGRESS.md
+- Find current subskill progress in learn-and-build/learning-docs/plan_and_progress/LEARNING_PROGRESS.md
 - Resume from first unchecked subskill in that skill
 
 **If user runs `/learn-and-implement` without arguments:**
-- Read learning-docs/plan_and_progress/LEARNING_PROGRESS.md (detailed subskill tracking)
+- Read learn-and-build/learning-docs/plan_and_progress/LEARNING_PROGRESS.md (detailed subskill tracking)
 - Find first unchecked subskill across all skills
 - Continue from that exact subskill
 
 **Tracking Files:**
-- `learning-docs/plan_and_progress/LEARNING_PROGRESS.md` = Subskill-level progress (precise resumption point)
-- `learning-docs/plan_and_progress/LEARNING_PLAN.md` = Skill-level summary (high-level overview)
+- `learn-and-build/learning-docs/plan_and_progress/LEARNING_PROGRESS.md` = Subskill-level progress (precise resumption point)
+- `learn-and-build/learning-docs/plan_and_progress/LEARNING_PLAN.md` = Skill-level summary (high-level overview)
 
 ### Step 1: Check Requirements
-- Find skill in `learning-docs/plan_and_progress/LEARNING_PLAN.md`
+- Find skill in `learn-and-build/learning-docs/plan_and_progress/LEARNING_PLAN.md`
 - Identify all subskills from AI Bible/AI_Learning_v2.md
 - Note if skill has Claude Code topics (🔷)
 
@@ -162,17 +194,40 @@ When creating learning documents and slides, follow these principles:
 - Answer questions as we go
 
 ### Step 3: Teach Claude Code Topics (Aspect 26, if 🔷)
-- After all subskills learned
+- After all subskills learned (Aspects 1-23 complete)
 - Teach how Claude Code implements this concept
-- **Guide colo-flux implementation**: Help user build colo-flux component hands-on
+- **Provide implementation instructions for colo-flux**: Give clear guidance on what to build
+- **Instruct user to implement**: Tell user to open separate Claude session and vibe code
 - Append to `all-topics/Claude/complete-learning.md`
 - Append slides to `all-topics/Claude/slides.md`
+
+**Implementation Handoff Template:**
+```
+## 🛠️ Now Build in colo-flux
+
+You've learned the theory. Now implement it.
+
+**What to build:** [Specific component/feature]
+**Where:** ~/reg/pa_regression_hook/tools/colo-flux/[path]
+**How:** Open a separate Claude Code session and vibe code
+
+**Instructions:**
+1. [Step 1]
+2. [Step 2]
+3. [Step 3]
+
+**Success Criteria:**
+- [ ] [Criterion 1]
+- [ ] [Criterion 2]
+
+Once implemented and tested, mark this Claude topic as [x] in LEARNING_PROGRESS.md
+```
 
 ### Step 4: Create Documents
 
 **Structure:**
 ```
-learning-docs/
+learn-and-build/learning-docs/
   └── all-topics/
       ├── {concept-name}/
       │   ├── complete-learning.md        (all subskills, Aspects 1-23)
@@ -187,14 +242,14 @@ learning-docs/
 
 **ALWAYS** update tracking files after each subskill completion:
 
-**learning-docs/plan_and_progress/LEARNING_PROGRESS.md (Detailed Tracking):**
+**learn-and-build/learning-docs/plan_and_progress/LEARNING_PROGRESS.md (Detailed Tracking):**
 - Mark subskill as `[x]` when Aspects 1-23 complete
 - For Claude topics: Mark as `[x]` when learned + implemented in colo-flux
 - Update skill status counters (e.g., "Skill 1 Status: 3/20 complete")
 - Update phase statistics
 - This is checked by auto-continuation
 
-**learning-docs/plan_and_progress/LEARNING_PLAN.md (High-Level Summary):**
+**learn-and-build/learning-docs/plan_and_progress/LEARNING_PLAN.md (High-Level Summary):**
 - When ALL subskills in a skill are `[x]`, mark skill-level checkbox
 - Update phase completion percentage
 - Provides overview of progress
@@ -214,7 +269,7 @@ learning-docs/
 - ✓ Claude topics added to `all-topics/Claude/` (if 🔷)
 - ✓ Visual diagrams included
 - ✓ No redundancy
-- ✓ Checklist updated in learning-docs/plan_and_progress/LEARNING_PLAN.md
+- ✓ Checklist updated in learn-and-build/learning-docs/plan_and_progress/LEARNING_PLAN.md
 
 ## What I Create
 
