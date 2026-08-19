@@ -74,6 +74,8 @@ The first start installs/checks Python 3.12, Ollama, Python dependencies, the lo
 
 ---
 
+> **Resource usage at a glance** ([details](#resource-usage)): idle, ~25 MB RAM / ~0% CPU. While the local AI categorizes transactions, up to ~3.5 GB RAM (the model's own size) / ~12–17% CPU, for ~1 minute typically, ~8–10 minutes worst case (150-transaction batch cap + Ollama's keep-alive tail) — then it drops back to idle.
+
 ## What PocketTrack does
 
 PocketTrack is a local-first personal finance application with two focused workflows:
