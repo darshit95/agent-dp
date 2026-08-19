@@ -428,6 +428,8 @@ class AuditRepository:
         "login_failure",
         "logout",
         "password_changed",
+        "password_reset_via_local_presence",
+        "password_reset_failed",
         "plaid_credentials_updated",
         "plaid_item_connected",
         "account_mapping_updated",

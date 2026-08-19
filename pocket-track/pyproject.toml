@@ -20,6 +20,11 @@ dependencies = [
   "httpx>=0.27,<1",
   "cryptography>=43,<48",
   "psutil>=5.9,<8",
+  # Forgot-password uses a real OS prompt (Touch ID/Mac password, Windows
+  # Hello) to prove local presence - see security/local_presence.py. Platform
+  # markers keep these out of the dependency set entirely on the other OS.
+  "pyobjc-framework-LocalAuthentication>=10,<12; sys_platform == 'darwin'",
+  "winsdk>=1.0,<2; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]

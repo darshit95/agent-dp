@@ -11,6 +11,7 @@ from cardbudget.app import create_app
 from cardbudget.config import Settings
 from cardbudget.db.engine import Database
 from cardbudget.security.keychain import MemorySecretStore
+from cardbudget.security.local_presence import FakeLocalPresence
 from cardbudget.services import bootstrap_services
 
 
@@ -32,7 +33,10 @@ def test_stack(tmp_path: Path):
         connector=sqlite3.connect,
         require_cipher=False,
     )
-    services = bootstrap_services(settings, secret_store=store, database=db)
+    # Defaults to "succeeds" so tests unrelated to forgot-password aren't
+    # affected; tests that care about the local-presence outcome swap in
+    # their own FakeLocalPresence via services.auth.local_presence directly.
+    services = bootstrap_services(settings, secret_store=store, database=db, local_presence=FakeLocalPresence())
     app = create_app(settings, services=services)
     client = TestClient(app, base_url="http://localhost")
     return settings, store, db, services, client
