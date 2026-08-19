@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from cardbudget.security.local_presence import LocalPresenceUnavailable
 from cardbudget.security.passwords import PasswordPolicyError
 
 router = APIRouter()
@@ -107,7 +108,11 @@ def login_page(request: Request):
     return _templates(request).TemplateResponse(
         request,
         "login.html",
-        {"csrf_token": services.form_tokens.issue("login"), "error": None},
+        {
+            "csrf_token": services.form_tokens.issue("login"),
+            "error": None,
+            "message": request.query_params.get("message"),
+        },
     )
 
 
@@ -133,6 +138,7 @@ def login_submit(
             {
                 "csrf_token": services.form_tokens.issue("login"),
                 "error": "Too many failed attempts. Try again shortly.",
+                "message": None,
             },
             status_code=429,
         )
@@ -149,6 +155,7 @@ def login_submit(
             {
                 "csrf_token": services.form_tokens.issue("login"),
                 "error": "Invalid username or password.",
+                "message": None,
             },
             status_code=401,
         )
@@ -177,3 +184,94 @@ def logout(request: Request, csrf_token: str = Form(...)):
     response = RedirectResponse("/login", status_code=303)
     response.delete_cookie(services.settings.session_cookie_name, path="/")
     return response
+
+
+@router.get("/forgot-password", response_class=HTMLResponse)
+def forgot_password_page(request: Request):
+    services = _services(request)
+    if not services.auth.is_initialized():
+        return RedirectResponse("/setup", status_code=303)
+    return _templates(request).TemplateResponse(
+        request,
+        "forgot-password.html",
+        {
+            "csrf_token": services.form_tokens.issue("forgot_password"),
+            "error": None,
+            "minimum_password_length": services.settings.password_min_length,
+        },
+    )
+
+
+@router.post("/forgot-password", response_class=HTMLResponse)
+def forgot_password_submit(
+    request: Request,
+    username: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    csrf_token: str = Form(...),
+):
+    services = _services(request)
+    if not services.auth.is_initialized():
+        return RedirectResponse("/setup", status_code=303)
+    if not services.form_tokens.validate(csrf_token, "forgot_password"):
+        raise HTTPException(status_code=403, detail="Invalid form token.")
+
+    remote = _remote_addr(request)
+    decision = services.recovery_throttle.check(username, remote)
+    if not decision.allowed:
+        response = _templates(request).TemplateResponse(
+            request,
+            "forgot-password.html",
+            {
+                "csrf_token": services.form_tokens.issue("forgot_password"),
+                "error": "Too many attempts. Try again shortly.",
+                "minimum_password_length": services.settings.password_min_length,
+            },
+            status_code=429,
+        )
+        response.headers["Retry-After"] = str(decision.retry_after_seconds)
+        return response
+
+    error: str | None = None
+    if new_password != confirm_password:
+        error = "Passwords do not match."
+    else:
+        try:
+            user = services.auth.reset_password_via_local_presence(username, new_password)
+        except PasswordPolicyError as exc:
+            # A weak new password is not a credential-guessing signal - don't throttle it.
+            error = str(exc)
+        except LocalPresenceUnavailable:
+            # Not a failed attempt - the machine/platform simply can't do this
+            # check at all, so don't count it against the throttle.
+            error = (
+                "Password recovery isn't available on this system (local device "
+                "authentication - Touch ID/Windows Hello - could not be performed here)."
+            )
+        except ValueError:
+            services.recovery_throttle.record_failure(username, remote)
+            services.audit.record("password_reset_failed", remote)
+            error = "Could not confirm it's you. Make sure the username is correct and complete the Touch ID/Windows Hello/password prompt."
+        else:
+            services.recovery_throttle.record_success(username, remote)
+            services.audit.record("password_reset_via_local_presence", remote)
+            # A password reset invalidates every existing session, same as a
+            # settings-page change-password does - including any session the
+            # forgetful user is still (unexpectedly) logged in under.
+            services.sessions.repository.delete_all_for_user(user.id)
+            from urllib.parse import quote_plus
+
+            message = quote_plus("Password reset. Sign in with your new password.")
+            return RedirectResponse(f"/login?message={message}", status_code=303)
+
+    return _templates(request).TemplateResponse(
+        request,
+        "forgot-password.html",
+        {
+            "csrf_token": services.form_tokens.issue("forgot_password"),
+            "error": error,
+            "minimum_password_length": services.settings.password_min_length,
+            "username": username,
+        },
+        status_code=400,
+    )

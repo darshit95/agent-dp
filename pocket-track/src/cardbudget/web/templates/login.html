@@ -5,6 +5,7 @@
   <div class="auth-brand"><span class="brand-mark"><svg class="icon"><use href="#i-wallet"></use></svg></span><strong>PocketTrack</strong></div>
   <h1>Sign in</h1>
   <p class="muted">Local access only · financial data stays behind authentication.</p>
+  {% if message %}<div class="alert success">{{ message }}</div>{% endif %}
   {% if error %}<div class="alert">{{ error }}</div>{% endif %}
   <form method="post" action="/login" autocomplete="off">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -16,5 +17,6 @@
     </label>
     <button type="submit">Sign in</button>
   </form>
+  <p class="fine-print"><a href="/forgot-password">Forgot your password?</a></p>
 </section>
 {% endblock %}

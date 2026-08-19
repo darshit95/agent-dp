@@ -32,6 +32,7 @@ src/cardbudget/scheduler/macos.py
 src/cardbudget/security/__init__.py
 src/cardbudget/security/csrf.py
 src/cardbudget/security/keychain.py
+src/cardbudget/security/local_presence.py
 src/cardbudget/security/passwords.py
 src/cardbudget/security/sessions.py
 src/cardbudget/security/throttle.py
@@ -44,6 +45,7 @@ src/cardbudget/web/templates/base.html
 src/cardbudget/web/templates/bucket.html
 src/cardbudget/web/templates/buckets.html
 src/cardbudget/web/templates/dashboard.html
+src/cardbudget/web/templates/forgot-password.html
 src/cardbudget/web/templates/login.html
 src/cardbudget/web/templates/networth.html
 src/cardbudget/web/templates/settings.html

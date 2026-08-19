@@ -27,6 +27,7 @@ from cardbudget.security.keychain import (
     ensure_db_key,
     ensure_session_secret,
 )
+from cardbudget.security.local_presence import LocalPresenceService
 from cardbudget.security.passwords import PasswordService
 from cardbudget.security.sessions import SessionService
 from cardbudget.security.throttle import LoginThrottle
@@ -41,6 +42,7 @@ class ApplicationServices:
     sessions: SessionService
     form_tokens: FormTokenService
     throttle: LoginThrottle
+    recovery_throttle: LoginThrottle
     buckets: BucketRepository
     audit: AuditRepository
     plaid_repository: PlaidRepository
@@ -60,6 +62,7 @@ def bootstrap_services(
     database: Database | None = None,
     plaid_client_factory=None,
     ollama_client: OllamaClassifierClient | None = None,
+    local_presence: LocalPresenceService | None = None,
 ) -> ApplicationServices:
     ensure_private_directory(settings.data_dir)
     store = secret_store or OSKeychain(settings.keychain_service)
@@ -78,7 +81,8 @@ def bootstrap_services(
     merchant_rules = MerchantRuleRepository(db)
     networth_repository = NetWorthRepository(db)
     passwords = PasswordService(settings.password_min_length)
-    auth = AuthService(users, passwords, audit)
+    presence = local_presence or LocalPresenceService()
+    auth = AuthService(users, passwords, audit, presence)
     sessions = SessionService(session_repo, settings.session_idle_seconds)
     sessions.repository.delete_expired(utc_now())
     plaid = PlaidService(
@@ -106,6 +110,16 @@ def bootstrap_services(
         sessions=sessions,
         form_tokens=FormTokenService(session_secret, settings.form_token_ttl_seconds),
         throttle=LoginThrottle(
+            max_failures=settings.login_max_failures,
+            window_seconds=settings.login_attempt_window_seconds,
+            lockout_seconds=settings.login_lockout_seconds,
+        ),
+        # Separate instance (separate in-memory counters) from the login
+        # throttle above, so repeated failed login attempts and repeated
+        # forgot-password attempts don't share - or reset - each other's
+        # lockout state. Mainly guards against spamming real OS Touch
+        # ID/Windows Hello prompts.
+        recovery_throttle=LoginThrottle(
             max_failures=settings.login_max_failures,
             window_seconds=settings.login_attempt_window_seconds,
             lockout_seconds=settings.login_lockout_seconds,

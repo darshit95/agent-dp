@@ -10,5 +10,11 @@ httpx<1,>=0.27
 cryptography<48,>=43
 psutil<8,>=5.9
 
+[:sys_platform == "darwin"]
+pyobjc-framework-LocalAuthentication<12,>=10
+
+[:sys_platform == "win32"]
+winsdk<2,>=1.0
+
 [dev]
 pytest<10,>=8
