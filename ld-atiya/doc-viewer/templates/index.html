@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation Library</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #0a0a0a;
+            min-height: 100vh;
+            color: #e0e0e0;
+        }
+
+        .header {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            color: white;
+            padding: 30px 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            font-weight: 700;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .toggle-btn, .logout-btn {
+            background: rgba(255, 255, 255, 0.05);
+            color: #e0e0e0;
+            padding: 10px 18px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s;
+            cursor: pointer;
+            font-size: 14px;
+            letter-spacing: 0.3px;
+        }
+
+        .toggle-btn:hover, .logout-btn:hover {
+            background: rgba(99, 102, 241, 0.2);
+            border-color: rgba(99, 102, 241, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        .topic-card {
+            background: rgba(23, 23, 23, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            margin-bottom: 24px;
+            overflow: hidden;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        .topic-card:hover {
+            border-color: rgba(99, 102, 241, 0.3);
+            box-shadow: 0 8px 32px rgba(99, 102, 241, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .topic-header {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%);
+            color: #ffffff;
+            padding: 22px 28px;
+            font-size: 19px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.3s;
+            letter-spacing: 0.3px;
+        }
+
+        .topic-header:hover {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.25) 0%, rgba(168, 85, 247, 0.25) 100%);
+        }
+
+        .topic-header-left {
+            display: flex;
+            align-items: center;
+            flex: 1;
+        }
+
+        .folder-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: #a0a0a0;
+            margin-left: auto;
+            margin-right: 12px;
+        }
+
+        .folder-badge {
+            background: rgba(99, 102, 241, 0.15);
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+            color: #b4b4ff;
+        }
+
+        .collapse-icon {
+            font-size: 18px;
+            transition: transform 0.3s;
+        }
+
+        .topic-card.collapsed .collapse-icon {
+            transform: rotate(-90deg);
+        }
+
+        .files-list {
+            padding: 20px 25px;
+            max-height: 5000px;
+            overflow: hidden;
+            transition: max-height 0.4s ease-out, padding 0.4s ease-out;
+        }
+
+        .topic-card.collapsed .files-list {
+            max-height: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+        }
+
+        .nested-topics {
+            margin-top: 16px;
+            padding-left: 24px;
+            border-left: 2px solid rgba(99, 102, 241, 0.2);
+        }
+
+        .nested-topics .topic-card {
+            margin-left: 0 !important;
+            margin-bottom: 12px;
+            background: rgba(15, 15, 15, 0.6);
+            border-color: rgba(255, 255, 255, 0.06);
+        }
+
+        .nested-topics .topic-card:hover {
+            border-color: rgba(99, 102, 241, 0.25);
+        }
+
+        .nested-topics .topic-header {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(168, 85, 247, 0.08) 100%);
+            padding: 18px 24px;
+            font-size: 17px;
+        }
+
+        .nested-topics .topic-header:hover {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%);
+        }
+
+        /* Deeper nesting */
+        .nested-topics .nested-topics .topic-card {
+            background: rgba(10, 10, 10, 0.8);
+        }
+
+        .nested-topics .nested-topics .topic-header {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(168, 85, 247, 0.05) 100%);
+            padding: 16px 22px;
+            font-size: 16px;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            padding: 16px 18px;
+            margin-bottom: 8px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            text-decoration: none;
+            color: #e0e0e0;
+            transition: all 0.3s;
+            border-left: 3px solid transparent;
+        }
+
+        .file-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .file-item:hover {
+            background: rgba(99, 102, 241, 0.1);
+            border-left-color: #6366f1;
+            border-color: rgba(99, 102, 241, 0.2);
+            transform: translateX(6px);
+            box-shadow: 0 4px 16px rgba(99, 102, 241, 0.15);
+        }
+
+        .file-icon {
+            font-size: 22px;
+            margin-right: 14px;
+            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+        }
+
+        .file-name {
+            font-size: 15px;
+            font-weight: 500;
+            letter-spacing: 0.2px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 80px 20px;
+            color: #808080;
+            background: rgba(23, 23, 23, 0.5);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .empty-state-icon {
+            font-size: 72px;
+            margin-bottom: 24px;
+            opacity: 0.5;
+        }
+
+        .empty-state-text {
+            font-size: 18px;
+            font-weight: 500;
+            letter-spacing: 0.3px;
+        }
+
+        .stats {
+            background: rgba(23, 23, 23, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 32px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            display: flex;
+            gap: 24px;
+            backdrop-filter: blur(10px);
+        }
+
+        .stat-item {
+            flex: 1;
+            text-align: center;
+            padding: 20px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(168, 85, 247, 0.08) 100%);
+            border: 1px solid rgba(99, 102, 241, 0.15);
+            transition: all 0.3s;
+        }
+
+        .stat-item:hover {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%);
+            transform: translateY(-2px);
+        }
+
+        .stat-number {
+            font-size: 36px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+        }
+
+        .stat-label {
+            color: #a0a0a0;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <h1>📚 Documentation Library</h1>
+            <div class="header-actions">
+                <button class="toggle-btn" onclick="expandAll()">Expand All</button>
+                <button class="toggle-btn" onclick="collapseAll()">Collapse All</button>
+                <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        {% if tree %}
+        <div class="stats">
+            <div class="stat-item">
+                <div class="stat-number">{{ count_topics }}</div>
+                <div class="stat-label">Topics</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">{{ total_docs }}</div>
+                <div class="stat-label">Documents</div>
+            </div>
+        </div>
+
+        {% macro render_node(node) %}
+        <div class="topic-card">
+            <div class="topic-header" onclick="toggleTopic(this)">
+                <div class="topic-header-left">
+                    <span style="margin-right: 12px; font-size: 22px;">
+                        {% if node.has_children %}📁{% else %}📂{% endif %}
+                    </span>
+                    {{ node.display_name }}
+                </div>
+                <div class="folder-info">
+                    {% if node.files|length > 0 %}
+                    <span class="folder-badge">{{ node.files|length }} {% if node.files|length == 1 %}file{% else %}files{% endif %}</span>
+                    {% endif %}
+                    {% if node.has_children %}
+                    <span class="folder-badge">{{ node.children|length }} {% if node.children|length == 1 %}folder{% else %}folders{% endif %}</span>
+                    {% endif %}
+                </div>
+                <div class="collapse-icon">▼</div>
+            </div>
+            <div class="files-list">
+                {% if node.files %}
+                    {% for file in node.files %}
+                    <a href="{{ url_for('view_file', file_path=file.path) }}?v=4" class="file-item" target="_blank">
+                        <span class="file-icon">{% if file.type == 'markdown' %}📝{% else %}📄{% endif %}</span>
+                        <span class="file-name">{{ file.name }}</span>
+                    </a>
+                    {% endfor %}
+                {% endif %}
+
+                {% if node.children %}
+                <div class="nested-topics">
+                    {% for child in node.children %}
+                        {{ render_node(child) }}
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endmacro %}
+
+        {% for node in tree %}
+            {{ render_node(node) }}
+        {% endfor %}
+
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-state-icon">📭</div>
+            <div class="empty-state-text">No documentation files found</div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        function toggleTopic(header) {
+            const card = header.closest('.topic-card');
+            card.classList.toggle('collapsed');
+        }
+
+        // Optional: Add expand/collapse all functionality
+        function expandAll() {
+            document.querySelectorAll('.topic-card').forEach(card => {
+                card.classList.remove('collapsed');
+            });
+        }
+
+        function collapseAll() {
+            document.querySelectorAll('.topic-card').forEach(card => {
+                card.classList.add('collapsed');
+            });
+        }
+
+        // Optional: Remember collapsed state in localStorage
+        document.addEventListener('DOMContentLoaded', function() {
+            const cards = document.querySelectorAll('.topic-card');
+            cards.forEach((card, index) => {
+                const isCollapsed = localStorage.getItem('topic-' + index) === 'collapsed';
+                if (isCollapsed) {
+                    card.classList.add('collapsed');
+                }
+            });
+        });
+
+        // Save state when toggling
+        const originalToggle = toggleTopic;
+        toggleTopic = function(header) {
+            originalToggle(header);
+            const card = header.closest('.topic-card');
+            const cards = Array.from(document.querySelectorAll('.topic-card'));
+            const index = cards.indexOf(card);
+            const state = card.classList.contains('collapsed') ? 'collapsed' : 'expanded';
+            localStorage.setItem('topic-' + index, state);
+        };
+    </script>
+</body>
+</html>

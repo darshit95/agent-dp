@@ -40,7 +40,7 @@ Cover **ALL topics** in [AI Bible/AI_Learning_v2.md](../../AI Bible/AI_Learning_
 Track learning completion for auto-continuation with `/learn-and-implement`
 
 ### Phase 1: Foundations (Weeks 1-5)
-- [ ] Skill 1: Model/Provider Abstraction (Aspects 1-23) + 🔷 Claude Code (Aspect 26 + colo-flux)
+- [x] Skill 1: Model/Provider Abstraction (Aspects 1-23) + 🔷 Claude Code (Aspect 26 + colo-flux)
 - [ ] Skill 2: LLM Integration & Prompting (Aspects 1-23) + 🔷 Claude Code (Aspect 26 + colo-flux)
 - [ ] Skill 3: Structured Outputs (Aspects 1-23) + 🔷 Claude Code (Aspect 26 + colo-flux)
 - [ ] Skill 4: Observability (Aspects 1-23) + 🔷 Claude Code (Aspect 26 + colo-flux)
@@ -79,7 +79,7 @@ Track learning completion for auto-continuation with `/learn-and-implement`
 - [ ] Skill 27: Regression Testing (Aspects 1-23)
 - [ ] Skill 28: AI Safety & Security (Aspects 1-23)
 
-**Progress:** 0/28 skills complete (0% - Skill 1: 13/20 subskills done, awaiting Claude Code topics)
+**Progress:** 1/28 skills complete (3.6% - ✅ Skill 1 COMPLETE)
 
 ---
 
@@ -87,13 +87,13 @@ Track learning completion for auto-continuation with `/learn-and-implement`
 
 | Phase | Weeks | Skills | Subskills | Claude Topics | Focus | Status |
 |-------|-------|--------|-----------|---------------|-------|--------|
-| **1: Foundations** | 1-5 | 4 | 76 | **36** (all 4 🔷) | LLM basics, structured outputs, observability | **In Progress** (13/76 subskills) |
+| **1: Foundations** | 1-5 | 4 | 76 | **36** (all 4 🔷) | LLM basics, structured outputs, observability | **In Progress** (20/112 total) |
 | **2: Core Patterns** | 6-10 | 5 | 81 | **29** (3/5 🔷) | State, caching, human-in-loop, error handling | Not Started |
 | **3: Multi-Agent** | 11-16 | 4 | 165 | **23** (2/4 🔷) | Orchestration + **CrewAI/LangGraph** frameworks | Not Started |
 | **4: Advanced** | 17-21 | 7 | 118 | **15** (1/7 🔷) | RAG, embeddings, diagnostic loops | Not Started |
 | **5: Production** | 22-24 | 3 | 39 | - | LLM-as-judge, metrics, backend engineering | Not Started |
 | **6: Quality** | 25-28 | 5 | 41 | - | Testing, regression, safety, security | Not Started |
-| **TOTAL** | **28** | **28** | **545** | **103** (10/28 🔷) | | **0%** |
+| **TOTAL** | **28** | **28** | **545** | **103** (10/28 🔷) | | **3.6%** (1/28 skills) |
 
 ---
 
@@ -463,11 +463,12 @@ For each of the 30 skills, you will create a deep learning document covering:
 - Implement evidence classification & loop termination with chosen framework
 
 **Claude Code Learning (Aspect 26) - BUILD colo-flux:**
-- Implement multi-agent orchestration using chosen framework (CrewAI or LangGraph)
-- Build 6-agent pipeline: Coordinator → ImageFinder → Deployer → HealthChecker → TestRunner → ResultsAnalyzer → Triager
-- Implement hub-and-spoke pattern with central coordinator
-- Add loop termination and error propagation
-- **Deliverable:** Full multi-agent colo-flux pipeline (deployment → testing → triage → reporting)
+- Implement Batches API for overnight triage (50% cost savings vs real-time)
+- Add structured error responses (isError, isRetryable, errorCategory)
+- Implement retry logic and graceful degradation for deployments
+- Multi-step deployment loop termination (3-step deployment workflow)
+- **NO complex multi-agent frameworks** (colo-flux uses simple button handlers, not CrewAI/LangGraph)
+- **Deliverable:** Daily perf test button with auto-triage (Batches API for overnight runs)
 
 **Claude Code Topics (Aspect 26) - Integrated Per Skill:**
 
@@ -977,106 +978,182 @@ Update the Summary table at top of this document:
 
 ## colo-flux Project Specification
 
-**Project Location:** `~/reg/pa_regression_hook/tools/colo-flux` (to be created)
+**Project Location:** `~/reg/pa_regression_hook/tools/colo-flux`
 
-**Goal:** Build an AI-powered Colo performance testing automation system to practice Claude Code patterns
+**Goal:** Build a button-driven Streamlit automation tool for Colo SC performance testing (practice Claude Code patterns)
+
+**Architecture:** Simple button-driven UI (NO chat, NO multi-agent coordinator, NO complex orchestration)
 
 ### System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Colo-Flux System                      │
-├─────────────────────────────────────────────────────────┤
-│                                                          │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────┐  │
-│  │ Coordinator  │───▶│ Multi-Agent  │───▶│Dashboard │  │
-│  │   Agent      │    │  Pipeline    │    │   UI     │  │
-│  └──────────────┘    └──────────────┘    └──────────┘  │
-│         │                    │                   │       │
-│         ▼                    ▼                   ▼       │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │  Image     Deployer   Health    Test    Results │   │
-│  │  Finder              Checker   Runner  Analyzer │   │
-│  │                                         Triager  │   │
-│  └─────────────────────────────────────────────────┘   │
-│         │                                               │
-│         ▼                                               │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │ GCP, Artifact Registry, Test Topology, PARTS    │   │
-│  │ PostgreSQL, RAG (Colo 100G Playbook, JIRA)      │   │
-│  └─────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│              colo-flux Streamlit Dashboard              │
+├────────────────────────────────────────────────────────┤
+│                                                         │
+│  Button UI (6 Operations)                              │
+│  ┌─────────────────────────────────────────────────┐  │
+│  │ [Deploy Latest AMI - SC]  [Deploy Latest AMI - RN]│  │
+│  │ [Deploy saas-agent - SC] [Deploy saas-agent - RN]│  │
+│  │ [Full Deployment (3-Step)]  [Cleanup]          │  │
+│  │ [Run Daily Perf Test & Auto-Triage]            │  │
+│  └─────────────────────────────────────────────────┘  │
+│           ↓ (button click triggers Python function)    │
+│  ┌─────────────────────────────────────────────────┐  │
+│  │ Button Handlers (Python functions)              │  │
+│  │ • find_latest_image() → Claude Haiku            │  │
+│  │ • deploy_ami() → Claude Sonnet                  │  │
+│  │ • run_perf_tests() → PARTS framework            │  │
+│  │ • triage_failures() → Claude Opus (or Batches)  │  │
+│  └─────────────────────────────────────────────────┘  │
+│           ↓                                            │
+│  ┌─────────────────────────────────────────────────┐  │
+│  │ Backend: PostgreSQL, GCP APIs, PARTS            │  │
+│  │ Claude API (Anthropic SDK)                      │  │
+│  │ RAG: Colo 100G Playbook, JIRA, past failures    │  │
+│  └─────────────────────────────────────────────────┘  │
+│                                                         │
+│  Tabs: [Operations] [Dashboard] [Results] [Triage]    │
+└────────────────────────────────────────────────────────┘
 ```
+
+### The 6 Button Operations
+
+**1. Deploy Latest AMI (Colo SC or RN)**
+- Find latest AMI from artifact registry (Claude Haiku)
+- Upgrade existing instances in-place (Claude Sonnet)
+- Example: `~/reg/pa_regression_hook/tools/colo-flux/deploy_ami.sh`
+
+**2. Deploy Latest saas-agent (Colo SC or RN)**
+- Find latest saas-agent version (Claude Haiku)
+- Upgrade saas-agent on instances (Claude Sonnet)
+
+**3. Full Deployment (3-Step Approach)**
+- Step 1: Provision infrastructure
+- Step 2: Deploy Colo SC/RN
+- Step 3: Configure and verify
+- Orchestrated by Claude Sonnet
+- Reference: `~/reg/pa_regression_hook/tools/colo-flux/3_step_deployment.sh`
+
+**4. Cleanup Deployment**
+- Teardown test environment (Claude Haiku)
+- Reference: `~/reg/pa_regression_hook/tools/colo-flux/cleanup.sh`
+
+**5. Run Daily Perf Test & Auto-Triage**
+- Run PARTS performance tests
+- Compare vs baseline (Claude Sonnet)
+- **IF FAILED:** Auto-triage with Claude Opus
+- **USE BATCHES API** for overnight runs (50% cost savings)
+- Real-time for on-demand runs
+
+**6. Dashboard Tab**
+- View historical results
+- See triage reports
+- Track performance trends over time
+
+### Model Selection Strategy
+
+| Operation | Model | Why | Cost |
+|-----------|-------|-----|------|
+| Find latest image/version | **Haiku 4.5** | Simple API query, JSON parsing | ~$0.01 |
+| Deploy/Upgrade operations | **Sonnet 4.6** | Orchestration, error handling | ~$0.10 |
+| Performance analysis | **Sonnet 4.6** | Statistical comparison | ~$0.10 |
+| **Auto-triage failures** | **Opus 4.7** | Deep root cause analysis, RAG | ~$1.00 |
+| **Overnight triage** | **Opus 4.7 Batches** | Same as above, 50% cheaper | ~$0.50 |
 
 ### Core Features (Claude Code Learning Focus)
 
 **Phase 1 🔷 (Weeks 1-5):**
-- LLM gateway for agents
-- Agent profiles (ImageFinder, Deployer, etc.)
-- Structured outputs (DeploymentPlan, TestResults, TriageReport)
-- Observability and cost tracking
+- Claude API integration (Anthropic SDK)
+- Model selection logic (Haiku/Sonnet/Opus per operation)
+- Structured outputs (DeploymentStatus, TestResults, TriageReport)
+- Cost and latency tracking per operation
+- **Deliverable:** Working buttons for AMI deployment + basic dashboard
 
 **Phase 2 🔷 (Weeks 6-10):**
-- Deployment state management in PostgreSQL
-- Approval gates for production deployments
-- Cached deployment templates
-- Error handling and deduplication
+- PostgreSQL: deployment history, test results, triage reports
+- State tracking: deployment status, test runs
+- Prompt caching for deployment templates (90% cost reduction)
+- Error handling and retry logic
+- **Deliverable:** Full deployment + cleanup operations working
 
 **Phase 3 🔷 (Weeks 11-16):**
-- Multi-agent orchestration (hub-and-spoke)
-- Implement using chosen framework (CrewAI or LangGraph)
-- Coordinator → ImageFinder → Deployer → HealthChecker → TestRunner → ResultsAnalyzer → Triager
-- Loop termination and error propagation
+- Batches API integration for overnight triage (50% cost savings)
+- Error propagation and structured error responses
+- Loop termination for multi-step deployments
+- **NO complex multi-agent orchestration** (keep it simple: buttons → handlers → Claude)
+- **Deliverable:** Daily perf test with auto-triage working
 
 **Phase 4 🔷 (Weeks 17-21):**
-- RAG knowledge base: Colo 100G playbook, past failures, JIRA tickets
-- Semantic search for similar failure patterns
-- Diagnostic loops: "Why is throughput low?" → hypothesis → test
-- Intelligent triage with historical learning
+- RAG knowledge base: Colo 100G playbook, JIRA tickets, past failures
+- Semantic search for similar failure patterns (pgvector)
+- Two-stage RAG: retrieve candidates → LLM judge relevance
+- Intelligent triage using historical data
+- **Deliverable:** Smart triage with RAG-powered root cause analysis
 
 **Phase 5 (Weeks 22-24):**
-- Production deployment
-- Streamlit dashboard:
-  - One-touch deployment button
-  - Health monitoring
-  - Daily test scheduling
-  - Results visualization
-  - Triage reports
-- Cost and performance monitoring
+- Production Streamlit deployment
+- Dashboard tabs: Operations, Results, Triage Reports
+- Performance charts (throughput trends, latency)
+- Cost monitoring dashboard
+- **Deliverable:** Production UI with full workflow
 
 **Phase 6 (Weeks 25-28):**
-- Testing and hardening
 - Security: prevent unauthorized deployments
 - Golden dataset: 100+ deployment/test scenarios
+- Triage accuracy testing (>85% agreement)
 - CI/CD integration
+- **Deliverable:** Production-hardened colo-flux
 
 ### Integration Points
 
-**Where to find latest images:**
-- GCP Artifact Registry
+**Deployment Scripts (Reference Implementation):**
+- Location: `~/reg/pa_regression_hook/tools/colo-flux/`
+- Files: `deploy_ami.sh`, `3_step_deployment.sh`, `cleanup.sh`
+- **Use these as reference** when implementing button handlers
+
+**Latest Image Sources:**
+- GCP Artifact Registry API
 - PAN-OS AMI repository
-- API endpoints (to be discovered during implementation)
+- Query via Claude Haiku (cheap, fast)
 
 **Performance Tests:**
+- Test framework: PARTS (existing infrastructure)
 - Test topology: Colo SC FWs in test environment
-- Test framework: PARTS (existing test infrastructure)
 - Metrics: throughput, latency, connection count
-- Baselines: historical performance data
+- Baselines: stored in PostgreSQL
 
-**Triage Agent:**
-- Knowledge sources: colo-monitor historical data, JIRA tickets, Colo 100G playbook
-- Auto-categorization: image regression, config drift, infrastructure issue, GCP problem
-- Escalation: when confidence <70%, provide context to human
+**Triage Knowledge Sources:**
+- colo-monitor historical data
+- JIRA tickets (API integration)
+- Colo 100G playbook (RAG indexed)
+- Past failure patterns (PostgreSQL)
 
 ### Success Criteria
 
-- [ ] One-touch deployment: find latest image → deploy → verify → ready in <10 minutes
-- [ ] Automated daily test runs with results tracking
-- [ ] Triage accuracy >85% agreement with manual triage
-- [ ] Dashboard shows real-time deployment status, test results, triage reports
-- [ ] Cost per deployment+test+triage cycle <$2
+- [ ] 6 buttons fully functional in Streamlit UI
+- [ ] Deploy + test cycle completes in <10 minutes
+- [ ] Auto-triage accuracy >85% vs manual triage
+- [ ] Batches API saves 50% on overnight triage costs
+- [ ] Cost per full cycle (deploy + test + triage) <$2
+- [ ] Dashboard shows historical trends and triage reports
 
-**Note:** colo-flux implementation is OPTIONAL and focused on Claude Code learning (Aspect 26). Prioritize Atiya for core AI learning.
+### Key Simplifications (vs original over-engineered spec)
+
+**❌ NOT building:**
+- Multi-agent coordinator/orchestrator
+- Complex hub-and-spoke architecture
+- CrewAI or LangGraph frameworks (overkill for button handlers)
+- Chat interface
+
+**✅ ACTUALLY building:**
+- Simple Streamlit buttons
+- Python functions that call Claude API
+- Smart model selection (Haiku/Sonnet/Opus)
+- Batches API for cost optimization
+- RAG for intelligent triage
+
+**Note:** colo-flux demonstrates Claude Code patterns through practical automation, not complex AI orchestration.
 
 ---
 
