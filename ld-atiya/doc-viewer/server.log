@@ -1,0 +1,39 @@
+ * Serving Flask app 'app'
+ * Debug mode: on
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.100.5:5000
+[33mPress CTRL+C to quit[0m
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 140-416-058
+ * Detected change in '/home/test/reg/agent-dp/ld-atiya/doc-viewer/app.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 140-416-058
+ * Detected change in '/home/test/reg/agent-dp/ld-atiya/doc-viewer/app.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 140-416-058
+10.47.99.198 - - [20/Aug/2026 14:59:22] "GET /view/1.%20Model%20Provider%20Abstraction%20and%20Fallback/reliability-engineering/complete-learning.md?v=4 HTTP/1.1" 200 -
+ * Detected change in '/home/test/reg/agent-dp/ld-atiya/doc-viewer/app.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 140-416-058
+10.47.99.198 - - [20/Aug/2026 15:00:43] "GET /view/1.%20Model%20Provider%20Abstraction%20and%20Fallback/reliability-engineering/complete-learning.md?v=4 HTTP/1.1" 200 -
+10.47.99.198 - - [20/Aug/2026 15:00:45] "GET /view/1.%20Model%20Provider%20Abstraction%20and%20Fallback/reliability-engineering/complete-learning.md?v=4 HTTP/1.1" 200 -
+ * Detected change in '/home/test/reg/agent-dp/ld-atiya/doc-viewer/app.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 140-416-058
+10.47.99.198 - - [20/Aug/2026 15:01:51] "GET /view/1.%20Model%20Provider%20Abstraction%20and%20Fallback/reliability-engineering/complete-learning.md?v=4 HTTP/1.1" 200 -
+10.47.99.198 - - [20/Aug/2026 15:14:49] "GET /view/1.%20Model%20Provider%20Abstraction%20and%20Fallback/reliability-engineering/complete-learning.md?v=4 HTTP/1.1" 200 -
+10.47.99.198 - - [20/Aug/2026 15:41:39] "GET /view/1.%20Model%20Provider%20Abstraction%20and%20Fallback/reliability-engineering/complete-learning.md?v=4 HTTP/1.1" 200 -
+10.47.99.198 - - [20/Aug/2026 15:41:40] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+10.47.99.198 - - [20/Aug/2026 15:46:26] "GET /view/2.%20LLM%20Integration%20Prompt%20Engineering%20and%20Agent%20Profiles/agent-profile-architecture/complete-learning.md?v=4 HTTP/1.1" 200 -
+10.47.107.203 - - [20/Aug/2026 18:25:43] "GET /view/2.%20LLM%20Integration%20Prompt%20Engineering%20and%20Agent%20Profiles/agent-profile-architecture/complete-learning.md?v=4 HTTP/1.1" 200 -
+10.47.107.203 - - [20/Aug/2026 18:52:52] "GET /view/1.%20Model%20Provider%20Abstraction%20and%20Fallback/model-provider-abstraction/complete-learning.md?v=4 HTTP/1.1" 200 -
+10.47.107.203 - - [20/Aug/2026 19:03:21] "GET /view/2.%20LLM%20Integration%20Prompt%20Engineering%20and%20Agent%20Profiles/profile-implementation/complete-learning.md?v=4 HTTP/1.1" 200 -
+10.47.119.114 - - [20/Aug/2026 22:31:44] "GET /view/2.%20LLM%20Integration%20Prompt%20Engineering%20and%20Agent%20Profiles/profile-operations/complete-learning.md?v=4 HTTP/1.1" 200 -
+10.47.119.114 - - [20/Aug/2026 23:40:28] "GET /view/2.%20LLM%20Integration%20Prompt%20Engineering%20and%20Agent%20Profiles/prompt-engineering-fundamentals/complete-learning.md?v=4 HTTP/1.1" 200 -
