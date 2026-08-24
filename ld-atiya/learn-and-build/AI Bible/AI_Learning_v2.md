@@ -1,8 +1,8 @@
-# AI/Agentic Systems & Claude Code - Complete Learning Path
+# AI/Agentic Systems - Complete Learning Path
 
 **Systematically Organized for Progressive Learning**
 
-Total Content: 28 Broad Skills | 400+ AI/Agentic Subskills | 103 Claude Code Topics
+Total Content: 28 Broad Skills | 400+ AI/Agentic Subskills
 
 ---
 
@@ -18,8 +18,6 @@ This curriculum is designed for **14-week progressive mastery**, moving from fun
 - **Phase 5** (Weeks 9-10): Production & Optimization - Caching, Cost, Observability
 - **Phase 6** (Weeks 11-12): Quality & Safety - Testing, Evaluation, Security
 - **Phase 7** (Weeks 13-14): Deployment & Scale - Backend, CI/CD, Automation
-
-🔷 = Claude Code practical implementation topics
 
 ---
 
@@ -48,15 +46,6 @@ Required Technical Subskills:
 - Embedding/Judge/Synthesis Model Separation
 - Partial-Result Preservation
 - Optional-Dependency Failure Isolation
-
-🔷 CLAUDE CODE: Model Selection & API Fundamentals
-- Claude 4.X model family (Opus 4.7, Sonnet 4.6, Haiku 4.5)
-- Model selection for different tasks
-- Fast mode with Opus 4.6
-- Claude API fundamentals and SDK usage
-- Message Batches API (50% cost savings, 24-hour processing)
-- Tradeoffs: real-time vs. batch processing
-- Claude Code platforms (CLI, Desktop, Web, IDE extensions)
 
 ---
 
@@ -98,20 +87,6 @@ Required Technical Subskills:
 - Profile Restart Behavior
 - Per-Step Prompt Templates
 
-🔷 CLAUDE CODE: Prompt Engineering & Best Practices
-- Few-shot prompting techniques
-- Multi-pass review systems
-- Task Decomposition Strategies
-- Plan mode vs. direct execution workflows
-- Plan mode for implementation planning
-- Custom slash command development (Skills)
-- Skill creation, management, and frontmatter
-- Skill parameters and arguments
-- Plugins: architecture, installation, development
-- Confidence calibration in agentic systems
-- Anti-pattern: Prompt-based enforcement (use programmatic validation)
-- Anti-pattern: Self-reported confidence for routing (use deterministic thresholds)
-
 ---
 
 ### 3. Structured LLM Outputs and Validation
@@ -134,15 +109,6 @@ Required Technical Subskills:
 - Structured ANALYZE Outputs
 - Structured SYNTHESIZE Outputs
 
-🔷 CLAUDE CODE: Structured Output & Validation
-- JSON schema enforcement for structured output
-- --output-format json and --json-schema flags
-- Validation-retry loop architecture
-- Semantic vs. syntax validation
-- Programmatic validation layering
-- Agentic Loop Pattern: send request → check stop_reason → execute tool → return result → repeat
-- Stop reason evaluation and branching logic
-
 ---
 
 ### 4. Agent Observability and Experiment Tracking
@@ -164,18 +130,6 @@ Required Technical Subskills:
 - RAG Usage Telemetry
 - Progress Visibility
 - Triage History
-
-🔷 CLAUDE CODE: Tool Design & Execution Tracking
-- Model Context Protocol (MCP) fundamentals
-- Three core MCP primitives: tools, resources, and prompts
-- Tool description optimization for Claude selection
-- .mcp.json configuration and server setup
-- MCP server implementation (Python/TypeScript)
-- Tool scoping per agent role
-- Read, Edit, Write, Bash tools in Claude Code
-- Tool permission management
-- Parallel vs sequential tool execution
-- Tool result handling and error responses
 
 ---
 
@@ -205,20 +159,6 @@ Required Technical Subskills:
 - Confidence-State Tracking
 - Best-Hypothesis State
 - Run-to-Triage Relationships
-
-🔷 CLAUDE CODE: Context & Session Management
-- Session state management across agent interactions
-- Long-context preservation strategies
-- Memory system: user, feedback, project, reference types
-- Memory indexing with MEMORY.md
-- Memory versioning and updates
-- Context preservation across sessions
-- Context compression strategies
-- Information provenance tracking
-- Auto memory for persistent learning
-- CLAUDE.md hierarchy (project-level architecture rulebook)
-- .claude/rules/ glob patterns and rule enforcement
-- Anti-pattern: Larger context windows for attention problems (use focused passes)
 
 ---
 
@@ -275,15 +215,6 @@ Required Technical Subskills:
 - Bounded Iteration Cost
 - Parallelism-versus-Cache Trade-Off
 
-🔷 CLAUDE CODE: Cost Optimization & Caching
-- Cost optimization through prompt caching
-- Prompt caching for production optimization
-- Token consumption monitoring
-- Cost vs. latency tradeoffs
-- Production reliability and SLA management
-- Resource definition and access patterns (MCP)
-- Prompt template distribution via MCP
-
 ---
 
 ### 8. Human-in-the-Loop and Controlled Execution
@@ -303,18 +234,6 @@ Required Technical Subskills:
 - Fix-Prompt Validation
 - Side-Effect Authorization
 - Human Accountability
-
-🔷 CLAUDE CODE: Permission & Safety Controls
-- Permission modes and settings
-- Permission prompts and user approval
-- Allowlist configuration for common operations
-- Sandbox mode for safe execution
-- Dangerous operation handling
-- Git safety protocols (no force push, no --no-verify)
-- Pre-commit hook compliance
-- Security vulnerability prevention (XSS, SQL injection, etc.)
-- Deterministic escalation logic (non-confidence-based)
-- Edge case routing and human escalation
 
 ---
 
@@ -400,23 +319,6 @@ Required Technical Subskills:
 - Skill Invocation
 - API-Based Agent Invocation
 - Monolith Decomposition
-
-🔷 CLAUDE CODE: Multi-Agent Orchestration
-- Hub-and-Spoke Orchestration with central coordinator
-- Coordinator-Subagent Patterns and task delegation
-- Multi-Agent System Design and communication topology
-- Agent types: general-purpose, Explore, Plan, code-reviewer
-- Explore subagent: quick, medium, very thorough modes
-- Background agent execution and parallel spawning
-- Agent isolation with worktrees (context: fork)
-- Foreground vs background agent execution
-- Agent resumption and continuation
-- Subagent error handling and propagation
-- Context window forking for subagent isolation
-- Token consumption isolation per subagent
-- Agent-to-agent handoff patterns
-- Anti-pattern: Flat multi-agent topology (use hub-and-spoke instead)
-- Anti-pattern: Universal tool availability (scope tools to agent roles)
 
 ---
 
@@ -635,16 +537,6 @@ Required Technical Subskills:
 - Bounded-Cost Termination
 - Infinite-Loop Prevention
 
-🔷 CLAUDE CODE: Error Handling & Reliability
-- Error response structure (isError, isRetryable, errorCategory)
-- Error propagation across multi-agent systems
-- Silent failure prevention
-- Anti-pattern: Silent failures on subagent errors (return structured error context)
-- Tool delegation and execution flow
-- Git commit workflows and pull request creation
-- Pre-commit hook failure handling
-- Retry logic and graceful degradation
-
 ---
 
 ═══════════════════════════════════════════════════════════════════
@@ -820,23 +712,6 @@ Required Technical Subskills:
 - Manual-Investigation Handoff
 - Capability-Gap Reporting in Final RCA
 
-🔷 CLAUDE CODE: CI/CD Integration & Automation
-- CI/CD integration patterns
-- -p flag for non-interactive CI/CD pipelines
-- Hook system and automation
-- Event-driven workflows (pre-commit, post-command, user-prompt-submit)
-- Automated behaviors via hooks configuration
-- Git integration and branch management
-- Co-authored commits with Claude
-- Status line configuration
-- Keyboard shortcuts and keybindings customization
-- IDE integration: VS Code, JetBrains
-- Clickable code references and file navigation
-- Read before edit workflow
-- Prefer Edit over Write for existing files
-- Clean diffs without cosmetic changes
-- Interactive vs. non-interactive modes
-
 ---
 
 ═══════════════════════════════════════════════════════════════════
@@ -997,59 +872,58 @@ Required Technical Subskills:
 
 ### Complete Topic Inventory
 
-| Phase | Week | Skill # | Skill Name | AI Subskills | Claude Topics |
-|-------|------|---------|------------|--------------|---------------|
-| 1 | 1-2 | 1 | Model/Provider Abstraction and Fallback | 13 | 7 |
-| 1 | 1-2 | 2 | LLM Integration, Prompt Engineering, and Agent Profiles | 32 | 12 |
-| 1 | 1-2 | 3 | Structured LLM Outputs and Validation | 15 | 7 |
-| 1 | 1-2 | 4 | Agent Observability and Experiment Tracking | 15 | 10 |
-| 2 | 3-4 | 5 | Agent State Management and Lifecycle | 14 | 12 |
-| 2 | 3-4 | 6 | Evidence Synthesis and Confidence Reasoning | 18 | 0 |
-| 2 | 3-4 | 7 | Prompt Caching and Token/Context Optimization | 23 | 7 |
-| 2 | 3-4 | 8 | Human-in-the-Loop and Controlled Execution | 13 | 10 |
-| 2 | 3-4 | 9 | Error Normalization, Deduplication, and Analysis Caching | 13 | 0 |
-| 3 | 5-6 | 10 | Deterministic-First Agent Architecture | 12 | 0 |
-| 3 | 5-6 | 11 | Classification-Aware Routing | 13 | 0 |
-| 3 | 5-6 | 12 | Sub-Agent Architecture and Orchestration | 11 | 15 |
-| 3 | 5-6 | 12A | **CrewAI Multi-Agent Framework** | **~60** | **0** |
-| 3 | 5-6 | 12B | **LangGraph State Machine Framework** | **~50** | **0** |
-| 3 | 5-6 | 13 | Evidence Classification and Loop Termination | 14 | 8 |
-| 4 | 7-8 | 14 | Retrieval-Augmented Generation and Knowledge Grounding | 15 | 0 |
-| 4 | 7-8 | 15 | Embeddings, Vector Databases, and Semantic Retrieval | 18 | 0 |
-| 4 | 7-8 | 16 | RAG Relevance Gating and Retrieval-Quality Control | 13 | 0 |
-| 4 | 7-8 | 17 | Knowledge Ingestion, Chunking, Indexing, and Freshness | 24 | 0 |
-| 4 | 7-8 | 18 | Agentic Diagnostic Loops | 18 | 0 |
-| 4 | 7-8 | 19 | Hypothesis-Driven Diagnosis and Targeted Tool Use | 15 | 0 |
-| 4 | 7-8 | 20 | Capability-Gap Tracking and User Progress | 15 | 15 |
-| 5 | 9-10 | 21 | LLM-as-Judge Design and Calibration | 11 | 0 |
-| 5 | 9-10 | 22 | LLM Evaluation Metrics | 8 | 0 |
-| 5 | 9-10 | 23 | Backend Product Engineering | 20 | 0 |
-| 6 | 11-12 | 24 | Golden Dataset Creation | 8 | 0 |
-| 6 | 11-12 | 25 | Nondeterministic AI Testing | 8 | 0 |
-| 6 | 11-12 | 26 | Metamorphic Testing for LLMs | 8 | 0 |
-| 6 | 11-12 | 27 | Prompt and Agent Regression Testing in CI | 8 | 0 |
-| 6 | 11-12 | 28 | AI Safety and Adversarial Evaluation | 9 | 0 |
+| Phase | Week | Skill # | Skill Name | AI Subskills |
+|-------|------|---------|------------|--------------|
+| 1 | 1-2 | 1 | Model/Provider Abstraction and Fallback | 13 |
+| 1 | 1-2 | 2 | LLM Integration, Prompt Engineering, and Agent Profiles | 32 |
+| 1 | 1-2 | 3 | Structured LLM Outputs and Validation | 15 |
+| 1 | 1-2 | 4 | Agent Observability and Experiment Tracking | 15 |
+| 2 | 3-4 | 5 | Agent State Management and Lifecycle | 14 |
+| 2 | 3-4 | 6 | Evidence Synthesis and Confidence Reasoning | 18 |
+| 2 | 3-4 | 7 | Prompt Caching and Token/Context Optimization | 23 |
+| 2 | 3-4 | 8 | Human-in-the-Loop and Controlled Execution | 13 |
+| 2 | 3-4 | 9 | Error Normalization, Deduplication, and Analysis Caching | 13 |
+| 3 | 5-6 | 10 | Deterministic-First Agent Architecture | 12 |
+| 3 | 5-6 | 11 | Classification-Aware Routing | 13 |
+| 3 | 5-6 | 12 | Sub-Agent Architecture and Orchestration | 11 |
+| 3 | 5-6 | 12A | **CrewAI Multi-Agent Framework** | **~60** |
+| 3 | 5-6 | 12B | **LangGraph State Machine Framework** | **~50** |
+| 3 | 5-6 | 13 | Evidence Classification and Loop Termination | 14 |
+| 4 | 7-8 | 14 | Retrieval-Augmented Generation and Knowledge Grounding | 15 |
+| 4 | 7-8 | 15 | Embeddings, Vector Databases, and Semantic Retrieval | 18 |
+| 4 | 7-8 | 16 | RAG Relevance Gating and Retrieval-Quality Control | 13 |
+| 4 | 7-8 | 17 | Knowledge Ingestion, Chunking, Indexing, and Freshness | 24 |
+| 4 | 7-8 | 18 | Agentic Diagnostic Loops | 18 |
+| 4 | 7-8 | 19 | Hypothesis-Driven Diagnosis and Targeted Tool Use | 15 |
+| 4 | 7-8 | 20 | Capability-Gap Tracking and User Progress | 15 |
+| 5 | 9-10 | 21 | LLM-as-Judge Design and Calibration | 11 |
+| 5 | 9-10 | 22 | LLM Evaluation Metrics | 8 |
+| 5 | 9-10 | 23 | Backend Product Engineering | 20 |
+| 6 | 11-12 | 24 | Golden Dataset Creation | 8 |
+| 6 | 11-12 | 25 | Nondeterministic AI Testing | 8 |
+| 6 | 11-12 | 26 | Metamorphic Testing for LLMs | 8 |
+| 6 | 11-12 | 27 | Prompt and Agent Regression Testing in CI | 8 |
+| 6 | 11-12 | 28 | AI Safety and Adversarial Evaluation | 9 |
 
 ---
 
 ### Learning Statistics
 
-**Total Content - UPDATED:**
+**Total Content:**
 - ✅ 28 Broad Skills (original)
 - ✅ 400+ AI/Agentic Subskills (original)
-- ✅ 103 Claude Code Topics (original)
-- ✅ **2 New Orchestration Frameworks: CrewAI + LangGraph**
-- ✅ **~110 New Framework-Specific Topics**
+- ✅ **2 Orchestration Frameworks: CrewAI + LangGraph**
+- ✅ **~110 Framework-Specific Topics**
 
-**GRAND TOTAL: 30 Skills | 510+ Subskills | 103 Claude Topics | 2 Frameworks**
+**GRAND TOTAL: 30 Skills | 510+ Subskills | 2 Frameworks**
 
-**Phase Breakdown - UPDATED:**
-- Phase 1 (Foundations): 4 skills, 75 AI subskills, 36 Claude topics
-- Phase 2 (Core Patterns): 5 skills, 81 AI subskills, 29 Claude topics
-- Phase 3 (Multi-Agent): **6 skills** (added CrewAI + LangGraph), **160 AI subskills**, 23 Claude topics
-- Phase 4 (Advanced): 7 skills, 118 AI subskills, 15 Claude topics
-- Phase 5 (Production): 3 skills, 39 AI subskills, 0 Claude topics
-- Phase 6 (Quality & Safety): 5 skills, 41 AI subskills, 0 Claude topics
+**Phase Breakdown:**
+- Phase 1 (Foundations): 4 skills, 75+ AI subskills
+- Phase 2 (Core Patterns): 5 skills, 81+ AI subskills
+- Phase 3 (Multi-Agent): **6 skills** (includes CrewAI + LangGraph), **160+ AI subskills**
+- Phase 4 (Advanced): 7 skills, 118+ AI subskills
+- Phase 5 (Production): 3 skills, 39+ AI subskills
+- Phase 6 (Quality & Safety): 5 skills, 41+ AI subskills
 
 **Learning Dependencies Respected:**
 ✅ Fundamentals before advanced topics
@@ -1064,11 +938,11 @@ Required Technical Subskills:
 
 **Daily Practice (2 hours/day):**
 - 45 min: Theory (read AI subskills)
-- 45 min: Practice (implement Claude Code topics)
+- 45 min: Practice (implement AI/Agentic patterns)
 - 30 min: Build small projects applying concepts
 
 **Weekly Milestones:**
-- Week 1: Build your first Claude agent
+- Week 1: Build your first LLM-powered agent
 - Week 2: Implement structured outputs with validation
 - Week 3: Create stateful agent with memory
 - Week 4: Add human-in-the-loop controls
@@ -1088,15 +962,14 @@ Required Technical Subskills:
 1. **Start with Phase 1, Week 1**: Model selection and basic prompting
 2. **Build as you learn**: Create small projects after each skill
 3. **Track progress**: Check off subskills as you master them
-4. **Practice Claude Code**: Use the CLI/IDE daily
-6. **Join community**: Engage with other learners (CrewAI: 45K+ stars, LangGraph: 15K+ stars)
-7. **Take certification**: After Phase 5 completion
+4. **Join community**: Engage with other learners (CrewAI: 45K+ stars, LangGraph: 15K+ stars)
+5. **Apply in practice**: Build real-world agentic systems
 
 **Good luck on your AI/Agentic learning journey! 🚀**
 
 ---
 
-*Document Version: 2.1*
-*Last Updated: 2026-08-14*
-*Content: 28 Original Skills + CrewAI + LangGraph | 510+ Subskills | 103 Claude Topics*
-*New: Multi-agent orchestration frameworks (CrewAI & LangGraph) integrated in Phase 3*
+*Document Version: 2.2*
+*Last Updated: 2026-08-24*
+*Content: 28 Original Skills + CrewAI + LangGraph | 400+ AI/Agentic Subskills*
+*Focus: Production-grade multi-agent systems with CrewAI & LangGraph*
