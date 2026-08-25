@@ -32,6 +32,33 @@
 
 ---
 
+### 1.2 Session Control & Housekeeping
+**Learn Second**: Driving, inspecting, and recovering a session
+
+**Context Inspection & Reclamation:**
+- `/context` — inspect what occupies the context window
+- `/compact` — summarize and continue in a reclaimed window
+- `/clear` — drop all context and start fresh
+- Compact vs. clear decision rule
+- Auto-compact behavior at the context ceiling
+- Scratch-file offloading before the window fills
+
+**Session Navigation:**
+- `/resume` — pick up a previous session
+- Session renaming and discoverability
+- `/fork` — clone full context into a new window
+- `/rewind` — time-travel to an earlier state
+- `/cd` — change working directory, preserve cache
+- Session recovery by metadata identifier
+
+**Diagnostics & Accounting:**
+- `/doctor` — dependency and environment diagnostics
+- `/usage` — consumption breakdown by session and workflow
+- `/powerup` — capability discovery
+- Safe mode
+
+---
+
 ═══════════════════════════════════════════════════════════════════
 ## LEVEL 2: CLAUDE CODE BASICS - CORE FEATURES (WEEKS 3-4)
 ═══════════════════════════════════════════════════════════════════
@@ -121,34 +148,57 @@
 
 ---
 
-### 3.3 Skills & Plugins System
+### 3.3 Skills, Commands & Plugins
 **Learn Tenth**: Extensibility and customization
 
-**Skills:**
-- Custom slash command development
-- Skill creation and management
+**Skills (model-invoked):**
+- Skill as a folder: instructions plus bundled assets (scripts, reference docs, templates)
+- The "bookshelf" model — front matter as book bindings
+- Progressive disclosure: only front matter loads up front
+- Front-matter `description` quality as the discovery signal
+- Disambiguating skills with similar names or descriptions
+- Writing scope and trigger conditions ("use when", "do not use for")
 - Skill frontmatter options
   - `context: fork` (isolation)
   - `model:` override
   - `run_in_background:`
-- Skill invocation and execution
+- Skills instead of context-dumping into CLAUDE.md
+- Codifying repeated work into skills
+- Skill creation and management
 - Built-in vs custom skills
 - Skill parameters and arguments
 
-**Plugins:**
-- Plugin architecture
-- Plugin installation and configuration
-- Plugin vs. Skills differences
-- Custom plugin development
-- Plugin ecosystem
-- Plugin discovery and management
+**Commands (user-invoked):**
+- Explicit `/` invocation
+- One-off, transactional scope
+- Not autonomously reached for by Claude
 
-**Common Skills:**
+**Skills vs. Commands:**
+- Invocation: autonomous vs. explicit
+- Discovery: front-matter description vs. user recall
+- Complexity: multi-step with assets vs. one-shot
+- Choosing between them
+- Preference for stacking behavior into skills
+
+**Plugins:**
+- Plugin as a bundle: commands + sub-agents + skills + hooks + MCP servers
+- Version-controlled, managed as code
+- Distribution across repos and teams
+- Centralizing team standards via plugins
+- `/plugins` — discovery, installation, management
+- Anthropic-verified marketplace vs. third-party sources
+- Vetting third-party plugins before install
+- Preferring org-approved bundles
+- Plugin vs. Skill: delivery mechanism vs. single capability
+- Custom plugin development
+
+**Common Commands:**
 - `/help` - Get help
 - `/init` - Initialize CLAUDE.md
-- `/review` - Review pull request
+- `/code-review` - Correctness review; `--fix` applies findings
 - `/security-review` - Security review
-- Custom domain-specific skills
+- `/plugins`, `/context`, `/usage`
+- Custom domain-specific skills and commands
 
 ---
 
@@ -162,12 +212,30 @@
 - code-reviewer
 - Specialized subagents (domain-specific)
 
+**Sub-Agent Configuration:**
+- Agent definition and front matter in `.claude/agents/`
+- `model:` per agent — right-sizing capability to task complexity
+- Tool allow/deny scoping per agent
+- MCP scoping per agent
+- Runaway guard — max turn limits
+- Per-agent hooks and memory
+- `description` front matter for parent-session discovery
+- Execution location and working directory
+
 **Execution Modes:**
 - Foreground execution (blocking, default)
 - Background execution (run_in_background parameter)
 - Parallel agent spawning
 - Agent resumption and continuation
 - Agent memory and context handoff
+
+**Sub-Agent Execution Semantics:**
+- Independent context window per sub-agent
+- Task-in / response-out interaction model
+- Background execution by default when delegated
+- Permission mode inheritance from the parent session
+- Nesting depth limit of 3 (reduced from 5)
+- Agent View as a monitoring cockpit
 
 **Explore Subagent:**
 - Explore subagent specialization
@@ -222,12 +290,28 @@
 - Hook configuration in settings.json
 - Hook execution context
 
-**Hook Types:**
-- Pre-commit hooks
-- Post-command hooks
-- User-prompt-submit hooks
-- Custom event hooks
-- Automated behaviors via hooks
+**Hook Events:**
+- `SessionStart` — cache warming, environment loading
+- `UserPromptSubmit` — inspect or augment the prompt
+- `PreToolUse` — fires before a tool call
+- `PostToolUse` — fires after a tool call
+- `Stop` / `SubagentStop` — control returns to the user
+- `PreCompact`, `Notification`
+- Distinguishing Claude Code hook events from git hooks (pre-commit is git, not Claude Code)
+
+**Hook Matchers & Binding:**
+- Binding hooks in settings.json by event
+- Matcher patterns — scoping to specific tools (e.g. `Edit|Write`) or MCP servers
+- Hooks as shell scripts
+- Returning a system message into the loop
+- Chaining multiple hooks on one event
+
+**Common Hook Patterns:**
+- Auto-format and type-check on edit/write
+- Secret scanning before egress
+- MCP activity logging
+- Stop-event notification hooks
+- Deterministic layer vs. model judgment
 
 **Workflow Patterns:**
 - Plan mode vs. direct execution workflows
@@ -282,7 +366,8 @@
 - Flat vs hierarchical topologies
 
 **Agent Isolation:**
-- Agent isolation with worktrees (context: fork)
+- Filesystem isolation with work trees
+- Context isolation with `context: fork`
 - Context window forking for subagent isolation
 - Token consumption isolation per subagent
 - Independent agent execution
@@ -304,8 +389,64 @@
 
 ---
 
-### 4.2 Advanced Prompt Engineering
-**Learn Seventeenth**: Production prompt patterns (20% of certification)
+### 4.2 Parallelization Patterns
+**Learn Seventeenth**: Running agents in parallel
+
+**Pattern 1 — Sub-Agents:**
+- Fan-out from a single session
+- Fresh context window per delegated task
+- Results returned to the parent; parent context stays lean
+- Scoped, independent subtasks
+
+**Pattern 2 — Agent View:**
+- Launching parallel sessions with `claude agents`
+- Cockpit view of session state (working / awaiting input / complete)
+- Classifier-generated session headlines
+- Starting new sessions from within the view
+- Bouncing between parallel threads
+
+**Pattern 3 — Agent Teams:**
+- Lead agent with decision authority
+- Shared task list
+- Messaging queue for worker coordination
+- Conflict resolution across workers
+- Convergence and unification by the lead
+
+**Pattern 4 — Dynamic Workflows:**
+- Plan expressed as a repeatable runtime script
+- Script-orchestrated sub-agent fan-out
+- Unification of results at the end
+- Resumability after interruption
+- Scale to hundreds of agents per run
+- Workflow size guideline (default 15, tunable)
+- Token cost awareness
+
+**Decision Matrix:**
+
+| | Sub-Agents | Agent View | Agent Teams | Dynamic Workflows |
+|---|---|---|---|---|
+| Orchestrated by | Parent session | You | Lead agent | The script |
+| Coordination | Fan-out / return | Manual switching | Messaging queue | Defined in plan |
+| Repeatable | No | No | No | Yes |
+| Resumable | No | Per-session | Partial | Yes |
+| Scale | Few–dozens | Handful | Team-sized | Hundreds |
+| Token cost | Low–moderate | Moderate | Moderate–high | High |
+| Use when | Scoped independent tasks | Multitasking threads | One task, tight sync | Repeatable large-scale work |
+
+**Underpinning Techniques:**
+- Work trees — filesystem isolation per agent
+- Collision avoidance as the prerequisite for higher parallelism
+- Work trees vs. `context: fork` — filesystem vs. context isolation
+- Cross-session messaging
+- Batching worktree-isolated agents at scale
+
+**Scope Note:**
+- Loop engineering / goal-driven autonomous loops as a 301 topic
+
+---
+
+### 4.3 Advanced Prompt Engineering
+**Learn Eighteenth**: Production prompt patterns (20% of certification)
 
 **Advanced Techniques:**
 - Few-shot prompting (advanced)
@@ -337,8 +478,8 @@
 
 ---
 
-### 4.3 Context Management & Reliability
-**Learn Eighteenth**: Production reliability (15% of certification)
+### 4.4 Context Management & Reliability
+**Learn Nineteenth**: Production reliability (15% of certification)
 
 **Context Strategies:**
 - Long-context preservation strategies
@@ -368,7 +509,7 @@
 ═══════════════════════════════════════════════════════════════════
 
 ### 5.1 CI/CD Integration & Deployment
-**Learn Nineteenth**: Production deployment (20% of certification)
+**Learn Twentieth**: Production deployment (20% of certification)
 
 **CI/CD Patterns:**
 - CI/CD integration patterns
@@ -394,7 +535,7 @@
 ---
 
 ### 5.2 Production Reliability & Monitoring
-**Learn Twentieth**: Production operations
+**Learn Twenty-First**: Production operations
 
 **Reliability:**
 - Production reliability patterns
@@ -420,7 +561,7 @@
 ---
 
 ### 5.3 Seven Anti-Patterns to Avoid
-**Learn Twenty-First**: Common mistakes (critical for certification)
+**Learn Twenty-Second**: Common mistakes (critical for certification)
 
 **Anti-Pattern 1: Prompt-based enforcement**
 - ❌ Problem: Using prompts to enforce rules
@@ -463,7 +604,7 @@
 ## DOCUMENT METADATA
 ═══════════════════════════════════════════════════════════════════
 
-**Document Version**: 1.0  
+**Document Version**: 1.1  
 **Last Updated**: 2026-08-24  
 **Status**: Complete - Restructured Learning Path  
 **Coverage**: Claude Code 101 to Certification Topics
