@@ -182,12 +182,32 @@ venv_is_healthy() {
     [[ -x "$VENV_PYTHON" ]] || return 1
     [[ -x "$VENV_POCKETTRACK" ]] || return 1
 
-    "$VENV_PYTHON" - <<'PYHEALTH' >/dev/null 2>&1
+    # PYTHONPATH is cleared for this check on purpose.
+    #
+    # This script exports PYTHONPATH="$ROOT/src" so its own commands work even
+    # when the venv's .pth is broken. That export also reached this health
+    # check, which meant "import cardbudget" succeeded via PYTHONPATH no matter
+    # how broken the install was - so the self-heal below never fired, and the
+    # venv stayed broken. The user then saw ModuleNotFoundError the moment they
+    # ran .venv/bin/pockettrack themselves, without the script's environment.
+    #
+    # Checking with PYTHONPATH unset asks the question that actually matters:
+    # does this venv work on its own, the way the user will invoke it?
+    env -u PYTHONPATH "$VENV_PYTHON" - <<'PYHEALTH' >/dev/null 2>&1
 import cardbudget
 import fastapi
 import uvicorn
 from cardbudget.cli import main
 PYHEALTH
+}
+
+
+venv_console_script_is_healthy() {
+    # The console script is what the user and the LaunchAgent actually run, and
+    # it resolves imports through its shebang interpreter - so verify it
+    # directly rather than inferring it from the module import above.
+    [[ -x "$VENV_POCKETTRACK" ]] || return 1
+    env -u PYTHONPATH "$VENV_POCKETTRACK" --help >/dev/null 2>&1
 }
 
 
@@ -211,7 +231,7 @@ unhide_venv_metadata
 # Self-heal a corrupt/stale venv.
 # ---------------------------------------------------------------
 
-if ! venv_is_healthy; then
+if ! venv_is_healthy || ! venv_console_script_is_healthy; then
     say "Existing virtual environment is unhealthy; rebuilding automatically"
 
     create_venv
@@ -223,8 +243,11 @@ fi
 # Hard validation.
 # ---------------------------------------------------------------
 
-if ! venv_is_healthy; then
-    fail "PocketTrack Python environment could not be initialized."
+if ! venv_is_healthy || ! venv_console_script_is_healthy; then
+    fail "PocketTrack Python environment could not be initialized.
+The virtual environment at $VENV cannot import PocketTrack on its own.
+If this checkout is in Desktop/Documents/Downloads, iCloud Drive may be
+hiding the venv's .pth file. Moving the checkout to ~/code fixes it for good."
 fi
 
 
