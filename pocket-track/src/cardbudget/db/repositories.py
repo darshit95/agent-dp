@@ -153,6 +153,20 @@ class UserRepository:
             return None
         return UserRecord(int(row[0]), str(row[1]), str(row[2]))
 
+    def get_single_user(self) -> UserRecord | None:
+        """The one account, if setup has been completed.
+
+        Ordered by id so the result is deterministic even if a future release
+        relaxes the single-user constraint.
+        """
+        with self.db.connection() as conn:
+            row = conn.execute(
+                "SELECT id, username, password_hash FROM users ORDER BY id LIMIT 1"
+            ).fetchone()
+        if not row:
+            return None
+        return UserRecord(int(row[0]), str(row[1]), str(row[2]))
+
     def create_single_user(self, username: str, password_hash: str) -> UserRecord:
         now = to_iso(utc_now())
         with self.db.transaction() as conn:
@@ -451,6 +465,8 @@ class AuditRepository:
         "liability_deleted",
         "backup_created",
         "backup_restored",
+        "username_revealed_via_local_presence",
+        "username_reveal_failed",
     }
 
     def __init__(self, db: Database) -> None:

@@ -15,6 +15,7 @@ from cardbudget.db.engine import Database
 from cardbudget.errors import CardBudgetError
 from cardbudget.plaid.client import PlaidAPIError
 from cardbudget.scheduler import autostart as app_autostart
+from cardbudget.scheduler import health as app_health
 from cardbudget.scheduler import macos as macos_scheduler
 from cardbudget.services import bootstrap_services
 
@@ -45,6 +46,7 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("install-autostart", help="Keep the web app running and restart it at login")
     sub.add_parser("uninstall-autostart", help="Stop the web app and disable start-at-login")
     sub.add_parser("autostart-status", help="Show whether the web app autostart agent is installed and loaded")
+    sub.add_parser("status", help="Check every PocketTrack component and report what is healthy")
     backup = sub.add_parser("backup", help="Create a password-encrypted logical backup with no Plaid secrets")
     backup.add_argument("--output", default=None, help="Output .ptbackup path (default: ~/Documents/PocketTrack-Backup-<timestamp>.ptbackup)")
     restore = sub.add_parser("restore", help="Restore a PocketTrack logical backup into the encrypted database")
@@ -246,6 +248,8 @@ def main(argv: list[str] | None = None) -> None:
             removed = app_autostart.uninstall()
             print("Autostart removed; PocketTrack is stopped." if removed else "Autostart was not installed.")
             return
+        if args.command == "status":
+            raise SystemExit(app_health.report(settings))
         if args.command == "autostart-status":
             state = app_autostart.status()
             print(f"{'INSTALLED' if state.installed else 'NOT INSTALLED'}  {state.plist_path}")

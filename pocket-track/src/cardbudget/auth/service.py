@@ -56,6 +56,36 @@ class AuthService:
         new_hash = self.passwords.hash_password(new_password)
         self.users.update_password_hash(user_id, new_hash)
 
+    def reveal_username_via_local_presence(self) -> str:
+        """Return the local account's username after the OS confirms presence.
+
+        The counterpart to reset_password_via_local_presence: that flow needs
+        the username up front, which is useless to someone who has forgotten
+        it. There is exactly one account (see is_initialized), so there is
+        nothing to look the name up *by* - the Touch ID / Windows Hello prompt
+        is the whole authorization, exactly as it is for a password reset.
+
+        Showing the name to whoever is physically at the machine grants no
+        access on its own; the password is still required to sign in. That is
+        the same trade the reset flow already makes, which hands over strictly
+        more (a new password).
+
+        Raises ValueError if no account exists yet, or if the OS-level check
+        fails or is cancelled. Raises LocalPresenceUnavailable if this machine
+        cannot perform the check at all.
+        """
+        user = self.users.get_single_user()
+        if not user:
+            raise ValueError("No account exists yet.")
+
+        # As in the reset flow, LocalPresenceUnavailable is deliberately not
+        # caught - callers must tell "cannot check here" apart from "check failed".
+        confirmed = self.local_presence.verify("Show your PocketTrack username")
+        if not confirmed:
+            raise ValueError("Local device authentication was not confirmed.")
+
+        return user.username
+
     def reset_password_via_local_presence(self, username: str, new_password: str) -> UserRecord:
         """Set a new password after the OS itself confirms someone is at this machine.
 

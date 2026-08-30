@@ -54,9 +54,26 @@ fi
 # Only stop Ollama if PocketTrack started that process itself.
 stop_pid_file "$OLLAMA_PID_FILE" "PocketTrack-managed Ollama"
 
+# Verify rather than assume: launchd tears down asynchronously, and a stop that
+# silently left the app serving on :8000 would be worse than a loud failure.
+STILL_LISTENING=""
+for _ in {1..20}; do
+  STILL_LISTENING="$(lsof -tiTCP:8000 -sTCP:LISTEN 2>/dev/null | head -1 || true)"
+  [[ -z "$STILL_LISTENING" ]] && break
+  sleep 0.25
+done
+
+if [[ -n "$STILL_LISTENING" ]]; then
+  echo >&2
+  echo "WARNING: something is still listening on port 8000 (PID $STILL_LISTENING):" >&2
+  ps -ww -p "$STILL_LISTENING" -o pid=,command= >&2 || true
+  echo "PocketTrack's own services were unloaded, so this is likely another app." >&2
+fi
+
 echo
 echo "PocketTrack is stopped and will stay stopped after a restart."
 echo "The local hostname entry is intentionally kept for the next start."
 echo "Scheduled transaction syncs are still installed and keep running at 8:00 AM and 8:00 PM."
 echo "  Stop those too with:  ./.venv/bin/pockettrack uninstall-scheduler"
 echo "  Start everything:     ./start.sh"
+echo "  Check what is running: ./.venv/bin/pockettrack status"
