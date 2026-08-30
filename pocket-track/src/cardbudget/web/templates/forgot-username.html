@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Find username · PocketTrack{% endblock %}
+{% block content %}
+<section class="auth-card">
+  <div class="auth-brand"><span class="brand-mark"><svg class="icon"><use href="#i-key"></use></svg></span><strong>PocketTrack</strong></div>
+  <h1>Find your username</h1>
+  {% if username %}
+    <p class="muted">Your username is:</p>
+    <p><strong>{{ username }}</strong></p>
+    <p class="fine-print">You still need your password to sign in. If you've forgotten that too, use <a href="/forgot-password">reset your password</a> with the username above.</p>
+    <p class="fine-print"><a href="/login">Back to sign in</a></p>
+  {% else %}
+    <p class="muted">There's no email on file, so this asks your Mac (Touch ID or your account password) or Windows Hello to confirm it's really you - the same way unlocking your device works. Being at this machine is the proof.</p>
+    {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+    <form method="post" action="/forgot-username" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit">Show my username</button>
+    </form>
+    <p class="fine-print">After you submit, check your screen for a Touch ID/Windows Hello/password prompt - the page will wait for it. Seeing your username doesn't sign you in; your password is still required.</p>
+    <p class="fine-print"><a href="/login">Back to sign in</a></p>
+  {% endif %}
+</section>
+{% endblock %}

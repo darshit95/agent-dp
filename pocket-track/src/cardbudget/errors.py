@@ -16,3 +16,13 @@ class EncryptionUnavailable(SecurityBootstrapError):
 
 class DatabaseOpenError(SecurityBootstrapError):
     """Raised when the encrypted database cannot be opened safely."""
+
+
+class DatabaseKeyMissing(DatabaseOpenError):
+    """Raised when an existing encrypted database is unreadable because the
+    keychain entry that encrypted it is gone.
+
+    Distinct from a generic DatabaseOpenError: the database file is intact, the
+    key simply no longer exists, so no retry or repair can recover it. The key is
+    never written to disk or an environment variable by design.
+    """

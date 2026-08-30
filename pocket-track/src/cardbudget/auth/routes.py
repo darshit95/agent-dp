@@ -202,6 +202,83 @@ def forgot_password_page(request: Request):
     )
 
 
+@router.get("/forgot-username", response_class=HTMLResponse)
+def forgot_username_page(request: Request):
+    services = _services(request)
+    if not services.auth.is_initialized():
+        return RedirectResponse("/setup", status_code=303)
+    return _templates(request).TemplateResponse(
+        request,
+        "forgot-username.html",
+        {
+            "csrf_token": services.form_tokens.issue("forgot_username"),
+            "error": None,
+            "username": None,
+        },
+    )
+
+
+@router.post("/forgot-username", response_class=HTMLResponse)
+def forgot_username_submit(request: Request, csrf_token: str = Form(...)):
+    services = _services(request)
+    if not services.auth.is_initialized():
+        return RedirectResponse("/setup", status_code=303)
+    if not services.form_tokens.validate(csrf_token, "forgot_username"):
+        raise HTTPException(status_code=403, detail="Invalid form token.")
+
+    remote = _remote_addr(request)
+    # Throttled on a fixed key rather than a submitted username - this form has
+    # no username field, and without a limit the page would be an unlimited
+    # Touch ID prompt generator.
+    throttle_key = "__forgot_username__"
+    decision = services.recovery_throttle.check(throttle_key, remote)
+    if not decision.allowed:
+        response = _templates(request).TemplateResponse(
+            request,
+            "forgot-username.html",
+            {
+                "csrf_token": services.form_tokens.issue("forgot_username"),
+                "error": "Too many attempts. Try again shortly.",
+                "username": None,
+            },
+            status_code=429,
+        )
+        response.headers["Retry-After"] = str(decision.retry_after_seconds)
+        return response
+
+    error: str | None = None
+    revealed: str | None = None
+    status_code = 400
+    try:
+        revealed = services.auth.reveal_username_via_local_presence()
+    except LocalPresenceUnavailable:
+        # The machine can't perform the check at all - not a failed attempt,
+        # so it must not count against the throttle.
+        error = (
+            "Username recovery isn't available on this system (local device "
+            "authentication - Touch ID/Windows Hello - could not be performed here)."
+        )
+    except ValueError:
+        services.recovery_throttle.record_failure(throttle_key, remote)
+        services.audit.record("username_reveal_failed", remote)
+        error = "Could not confirm it's you. Complete the Touch ID/Windows Hello/password prompt and try again."
+    else:
+        services.recovery_throttle.record_success(throttle_key, remote)
+        services.audit.record("username_revealed_via_local_presence", remote)
+        status_code = 200
+
+    return _templates(request).TemplateResponse(
+        request,
+        "forgot-username.html",
+        {
+            "csrf_token": services.form_tokens.issue("forgot_username"),
+            "error": error,
+            "username": revealed,
+        },
+        status_code=status_code,
+    )
+
+
 @router.post("/forgot-password", response_class=HTMLResponse)
 def forgot_password_submit(
     request: Request,

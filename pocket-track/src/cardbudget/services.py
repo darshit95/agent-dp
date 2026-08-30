@@ -21,9 +21,12 @@ from cardbudget.db.repositories import (
 from cardbudget.plaid.service import PlaidService
 from cardbudget.networth import NetWorthService
 from cardbudget.security.csrf import FormTokenService
+from cardbudget.errors import DatabaseKeyMissing, DatabaseOpenError
 from cardbudget.security.keychain import (
+    DB_KEY_NAME,
     OSKeychain,
     SecretStore,
+    db_key_exists,
     ensure_db_key,
     ensure_session_secret,
 )
@@ -66,11 +69,30 @@ def bootstrap_services(
 ) -> ApplicationServices:
     ensure_private_directory(settings.data_dir)
     store = secret_store or OSKeychain(settings.keychain_service)
+    # Capture both facts before ensure_db_key runs: once it mints a replacement
+    # key, "first run" and "the key for this database is gone" look identical.
+    database_existed = settings.database_path.exists()
+    had_db_key = db_key_exists(store)
     db_key = ensure_db_key(store)
     session_secret = ensure_session_secret(store)
 
     db = database or Database(settings.database_path, db_key, require_cipher=True)
-    db.initialize()
+    try:
+        db.initialize()
+    except DatabaseOpenError as exc:
+        if database_existed and not had_db_key:
+            raise DatabaseKeyMissing(
+                f"{settings.database_path} exists, but its encryption key is no longer in "
+                f"the OS keychain (service {settings.keychain_service!r}, account "
+                f"{DB_KEY_NAME!r}), so it cannot be decrypted.\n"
+                "The key is deliberately stored only in the keychain - never on disk or in "
+                "an environment variable - so there is no copy to recover.\n"
+                "If you restored this Mac or reset your login password, unlock the older "
+                "login keychain in Keychain Access to get the entry back.\n"
+                "Otherwise restore a backup, or move the file aside to start fresh:\n"
+                f"  mv {settings.database_path} {settings.database_path}.orphaned"
+            ) from exc
+        raise
 
     users = UserRepository(db)
     session_repo = SessionRepository(db)

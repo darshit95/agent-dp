@@ -90,6 +90,16 @@ def ensure_secret(store: SecretStore, name: str, generator: Callable[[], str]) -
     return value
 
 
+def db_key_exists(store: SecretStore) -> bool:
+    """Whether a database key is already stored, without creating one.
+
+    Callers use this to distinguish "first run" from "the key that encrypted the
+    existing database is gone", which are indistinguishable after ensure_db_key
+    has minted a replacement.
+    """
+    return bool(store.get_secret(DB_KEY_NAME))
+
+
 def ensure_db_key(store: SecretStore) -> str:
     value = ensure_secret(store, DB_KEY_NAME, lambda: secrets.token_hex(32))
     if len(value) != 64:

@@ -15,6 +15,7 @@ from cardbudget.db.engine import Database
 from cardbudget.errors import CardBudgetError
 from cardbudget.plaid.client import PlaidAPIError
 from cardbudget.scheduler import autostart as app_autostart
+from cardbudget.scheduler import health as app_health
 from cardbudget.scheduler import macos as macos_scheduler
 from cardbudget.services import bootstrap_services
 
@@ -45,6 +46,7 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("install-autostart", help="Keep the web app running and restart it at login")
     sub.add_parser("uninstall-autostart", help="Stop the web app and disable start-at-login")
     sub.add_parser("autostart-status", help="Show whether the web app autostart agent is installed and loaded")
+    sub.add_parser("status", help="Check every PocketTrack component and report what is healthy")
     backup = sub.add_parser("backup", help="Create a password-encrypted logical backup with no Plaid secrets")
     backup.add_argument("--output", default=None, help="Output .ptbackup path (default: ~/Documents/PocketTrack-Backup-<timestamp>.ptbackup)")
     restore = sub.add_parser("restore", help="Restore a PocketTrack logical backup into the encrypted database")
@@ -114,6 +116,16 @@ def _doctor(settings: Settings) -> int:
     print(f"INFO  Daily scheduler: {'loaded' if scheduler.loaded else ('installed, not loaded' if scheduler.installed else 'not installed')}")
     print(f"INFO  Data directory: {settings.data_dir}")
     print("INFO  Secrets: OS keychain (values intentionally not displayed)")
+    # The SQLCipher key exists only in the OS keychain by design, so a backup is
+    # the sole recovery path if that entry is ever lost. Nothing else prompts for
+    # one, so surface it here when none can be found.
+    backups = sorted((Path.home() / "Documents").glob("PocketTrack-Backup-*.ptbackup"))
+    if backups:
+        print(f"INFO  Backups: {len(backups)} found, most recent {backups[-1].name}")
+    else:
+        print("WARN  Backups: none found in ~/Documents")
+        print("      The database key lives only in the OS keychain. If it is lost,")
+        print("      the database cannot be decrypted. Run 'pockettrack backup'.")
     return 1 if failed else 0
 
 
@@ -236,6 +248,8 @@ def main(argv: list[str] | None = None) -> None:
             removed = app_autostart.uninstall()
             print("Autostart removed; PocketTrack is stopped." if removed else "Autostart was not installed.")
             return
+        if args.command == "status":
+            raise SystemExit(app_health.report(settings))
         if args.command == "autostart-status":
             state = app_autostart.status()
             print(f"{'INSTALLED' if state.installed else 'NOT INSTALLED'}  {state.plist_path}")

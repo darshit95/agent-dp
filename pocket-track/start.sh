@@ -26,12 +26,97 @@ chmod 700 "$RUNTIME"
 # inherits this.
 export PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
 
-say() { printf '\n\033[1;34mPocketTrack\033[0m  %s\n' "$*"; }
+# PHASE tracks the current stage so an unexpected failure says where it stopped
+# rather than leaving a bare shell error and a half-configured machine.
+PHASE="startup"
+say() { PHASE="$*"; printf '\n\033[1;34mPocketTrack\033[0m  %s\n' "$*"; }
 fail() { printf '\n\033[1;31mERROR\033[0m  %s\n' "$*" >&2; exit 1; }
+
+on_error() {
+  local code=$?
+  printf '\n\033[1;31mERROR\033[0m  Failed during: %s (exit %d, line %s)\n' \
+    "$PHASE" "$code" "${BASH_LINENO[0]:-?}" >&2
+  echo "PocketTrack may be partially configured. ./start.sh is safe to re-run -" >&2
+  echo "it stops everything it installed before setting up again." >&2
+  echo "To undo instead, run: ./stop.sh" >&2
+  exit "$code"
+}
+trap on_error ERR
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   fail "The one-command HTTPS launcher currently supports macOS. See README.md for manual launch instructions."
 fi
+
+# Declared before Phase 0 because the teardown compares the installed agent's
+# interpreter path against this checkout's.
+VENV="$ROOT/.venv"
+VENV_PYTHON="$VENV/bin/python"
+VENV_POCKETTRACK="$VENV/bin/pockettrack"
+
+# ----------------------------------------------------------------
+# Phase 0: stop anything already running, then build up from clean.
+#
+# start.sh is a full reinstall, so it begins by tearing down exactly what
+# stop.sh tears down. Doing this up front - rather than fighting the running
+# service later - is what makes the script safe to re-run from any state:
+#
+#   * The app agent is KeepAlive. Killing its process only makes launchd
+#     restart it, so a start.sh that merely killed PID-on-:8000 was racing
+#     launchd for the port and could abort against its own service.
+#   * A previously installed agent may point at a DIFFERENT checkout (a moved
+#     or renamed clone). That agent crash-loops invisibly, and its stale
+#     binary path must be removed rather than inherited.
+#
+# Unloading the agent removes both problems: there is nothing left to race,
+# and nothing left to inherit. Teardown is best-effort by design - a machine
+# where PocketTrack was never installed must pass straight through.
+# ----------------------------------------------------------------
+
+APP_LABEL="com.pockettrack.app"
+GUI_DOMAIN="gui/$(id -u)"
+APP_PLIST="$HOME/Library/LaunchAgents/${APP_LABEL}.plist"
+
+say "Stopping any running PocketTrack"
+
+# Report a foreign-checkout agent before removing it, so a moved clone is a
+# visible event rather than a silent takeover.
+if [[ -f "$APP_PLIST" ]]; then
+  INSTALLED_PROGRAM="$(
+    /usr/libexec/PlistBuddy -c "Print :ProgramArguments:0" "$APP_PLIST" 2>/dev/null || true
+  )"
+  if [[ -n "$INSTALLED_PROGRAM" && "$INSTALLED_PROGRAM" != "$VENV_PYTHON" ]]; then
+    echo "Note: the installed autostart agent points at another checkout:"
+    echo "        $INSTALLED_PROGRAM"
+    echo "      Replacing it with this one:"
+    echo "        $VENV_PYTHON"
+  fi
+fi
+
+# Unload the app agent. This is the real off switch; see stop.sh.
+launchctl bootout "$GUI_DOMAIN/$APP_LABEL" >/dev/null 2>&1 || true
+rm -f "$APP_PLIST"
+
+# Stop the HTTPS proxy so its config and plist can be rewritten cleanly.
+if [[ -f "$CADDY_PLIST" ]]; then
+  sudo launchctl bootout "system/$CADDY_LABEL" >/dev/null 2>&1 || true
+fi
+if command -v caddy >/dev/null 2>&1; then
+  sudo "$(command -v caddy)" stop --address "$CADDY_ADMIN" >/dev/null 2>&1 || true
+fi
+
+# Older releases started the server with nohup and recorded a PID file.
+if [[ -f "$APP_PID_FILE" ]]; then
+  LEGACY_PID="$(cat "$APP_PID_FILE" 2>/dev/null || true)"
+  if [[ -n "$LEGACY_PID" ]] && kill -0 "$LEGACY_PID" 2>/dev/null; then
+    kill "$LEGACY_PID" 2>/dev/null || true
+    for _ in {1..20}; do kill -0 "$LEGACY_PID" 2>/dev/null || break; sleep 0.2; done
+    kill -9 "$LEGACY_PID" 2>/dev/null || true
+    echo "Stopped legacy PocketTrack process (PID $LEGACY_PID)."
+  fi
+  rm -f "$APP_PID_FILE"
+fi
+
+echo "Previous PocketTrack instance stopped (if one was running)."
 
 say "Preparing system dependencies"
 if ! command -v brew >/dev/null 2>&1; then
@@ -54,10 +139,6 @@ fi
 command -v ollama >/dev/null 2>&1 || fail "Ollama installation did not complete."
 
 say "Preparing Python environment"
-
-VENV="$ROOT/.venv"
-VENV_PYTHON="$VENV/bin/python"
-VENV_POCKETTRACK="$VENV/bin/pockettrack"
 
 
 VENV_FRESHLY_BUILT=0
@@ -206,106 +287,34 @@ sudo killall -HUP mDNSResponder >/dev/null 2>&1 || true
 say "Starting PocketTrack application"
 
 # ----------------------------------------------------------------
-# Robust port-8000 handling
+# Port 8000 must be free before the agent is bootstrapped.
 #
-# PID files and macOS process names are not always reliable because
-# a running PocketTrack/Uvicorn process may appear simply as Python.
-#
-# If port 8000 is already occupied:
-#   1. Probe the HTTP service.
-#   2. If it identifies itself as PocketTrack, stop the stale instance.
-#   3. If it is not PocketTrack, fail safely and do not kill it.
+# Phase 0 already unloaded our own agent and any legacy process, so anything
+# still listening here belongs to a different application. PocketTrack does
+# not terminate software it does not own - it reports and stops.
 # ----------------------------------------------------------------
 
 get_port_8000_pid() {
   lsof -tiTCP:8000 -sTCP:LISTEN 2>/dev/null | head -1 || true
 }
 
-port_8000_is_pockettrack() {
-  local response
+# launchd releases the port asynchronously after bootout, so allow a moment.
+for _ in {1..20}; do
+  [[ -z "$(get_port_8000_pid)" ]] && break
+  sleep 0.25
+done
 
-  response="$(
-    curl -fsS \
-      --max-time 3 \
-      -H "Host: my-pocket-track" \
-      http://127.0.0.1:8000/ \
-      2>/dev/null || true
-  )"
-
-  [[ -n "$response" ]] || return 1
-
-  # PocketTrack pages consistently expose the product name.
-  printf '%s' "$response" | grep -qi "PocketTrack"
-}
-
-stop_existing_pockettrack() {
-  local pid="$1"
-
-  [[ -n "$pid" ]] || return 0
-
-  echo "Existing PocketTrack instance found on port 8000 (PID $pid)."
-  echo "Stopping stale instance so the current repository version can start..."
-
-  kill "$pid" 2>/dev/null || true
-
-  for _ in {1..20}; do
-    if ! kill -0 "$pid" 2>/dev/null; then
-      break
-    fi
-    sleep 0.25
-  done
-
-  if kill -0 "$pid" 2>/dev/null; then
-    kill -9 "$pid" 2>/dev/null || true
-  fi
-
-  for _ in {1..20}; do
-    if [[ -z "$(get_port_8000_pid)" ]]; then
-      break
-    fi
-    sleep 0.25
-  done
-
-  if [[ -n "$(get_port_8000_pid)" ]]; then
-    fail "PocketTrack could not release port 8000."
-  fi
-
-  rm -f "$APP_PID_FILE"
-
-  echo "Previous PocketTrack instance stopped."
-}
-
-# Clean stale PID metadata first.
-if [[ -f "$APP_PID_FILE" ]]; then
-  RECORDED_PID="$(cat "$APP_PID_FILE" 2>/dev/null || true)"
-
-  if [[ -z "$RECORDED_PID" ]] || ! kill -0 "$RECORDED_PID" 2>/dev/null; then
-    echo "Removing stale PocketTrack PID file."
-    rm -f "$APP_PID_FILE"
-  fi
-fi
-
-# Check the actual TCP listener instead of trusting process metadata.
 PORT_PID="$(get_port_8000_pid)"
 
 if [[ -n "$PORT_PID" ]]; then
-
-  if port_8000_is_pockettrack; then
-    stop_existing_pockettrack "$PORT_PID"
-  else
-    echo >&2
-    echo "ERROR: Port 8000 is already being used by another application:" >&2
-    ps -ww -p "$PORT_PID" -o pid=,command= >&2 || true
-    echo >&2
-    echo "PocketTrack verified that the service is not PocketTrack." >&2
-    echo "It will not terminate an unrelated application automatically." >&2
-    exit 1
-  fi
-fi
-
-# Port must now be free.
-if [[ -n "$(get_port_8000_pid)" ]]; then
-  fail "Port 8000 is still occupied."
+  echo >&2
+  echo "ERROR: Port 8000 is in use by another application:" >&2
+  ps -ww -p "$PORT_PID" -o pid=,command= >&2 || true
+  echo >&2
+  echo "PocketTrack stopped its own services in Phase 0, so this process is" >&2
+  echo "not PocketTrack. It will not be terminated automatically." >&2
+  echo "Stop it yourself, then re-run ./start.sh" >&2
+  exit 1
 fi
 
 rm -f "$APP_PID_FILE"
@@ -399,6 +408,7 @@ else
 fi
 
 say "Ready"
-echo "Open:  https://${HOSTNAME_LOCAL}"
-echo "Stop:  ./stop.sh"
-echo "Logs:  $APP_LOG"
+echo "Open:   https://${HOSTNAME_LOCAL}"
+echo "Check:  ./.venv/bin/pockettrack status"
+echo "Stop:   ./stop.sh"
+echo "Logs:   $APP_LOG_DIR/app-error.log"
