@@ -114,6 +114,16 @@ def _doctor(settings: Settings) -> int:
     print(f"INFO  Daily scheduler: {'loaded' if scheduler.loaded else ('installed, not loaded' if scheduler.installed else 'not installed')}")
     print(f"INFO  Data directory: {settings.data_dir}")
     print("INFO  Secrets: OS keychain (values intentionally not displayed)")
+    # The SQLCipher key exists only in the OS keychain by design, so a backup is
+    # the sole recovery path if that entry is ever lost. Nothing else prompts for
+    # one, so surface it here when none can be found.
+    backups = sorted((Path.home() / "Documents").glob("PocketTrack-Backup-*.ptbackup"))
+    if backups:
+        print(f"INFO  Backups: {len(backups)} found, most recent {backups[-1].name}")
+    else:
+        print("WARN  Backups: none found in ~/Documents")
+        print("      The database key lives only in the OS keychain. If it is lost,")
+        print("      the database cannot be decrypted. Run 'pockettrack backup'.")
     return 1 if failed else 0
 
 
