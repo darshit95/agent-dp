@@ -2,31 +2,33 @@ from __future__ import annotations
 
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
-from cardbudget.categorization.ollama import OllamaClassifierClient, OllamaUnavailable
+from cardbudget.categorization.provider import Classifier, LLMClassification, ProviderUnavailable
 from cardbudget.db.repositories import BucketRepository, MerchantRuleRepository, TransactionRepository
+from cardbudget.db.schema import ASSET_BUCKETS
 
-# Shared cap for how many unassigned transactions a single categorization pass
-# will touch. Local LLM classification is one blocking HTTP call per transaction
-# on constrained hardware (see cli.py, web/routes.py, plaid/routes.py call sites) -
-# a large limit turns one sync into a long, uninterrupted burst of full-tilt
-# inference. Anything left over is simply picked up by the next sync, since
-# list_unassigned() is re-queried every time - nothing is lost by capping this.
 DEFAULT_BATCH_LIMIT = 150
+RULE_BATCH_LIMIT = 250
+MODEL_CALL_LIMIT = 12
+MODEL_BATCH_SECONDS = 35
+HIGH_PLAID_CONFIDENCE = {"HIGH", "VERY_HIGH"}
+PLAID_BUCKETS = {
+    "FOOD_AND_DRINK_GROCERIES": "Grocery",
+    "TRANSPORTATION_GAS": "Gas + Car Wash",
+    "GENERAL_MERCHANDISE_ONLINE_MARKETPLACES": "Shopping",
+    "GENERAL_MERCHANDISE_CLOTHING_AND_ACCESSORIES": "Shopping",
+    "GENERAL_MERCHANDISE_DEPARTMENT_STORES": "Shopping",
+}
 
 
 def merchant_key(merchant: str | None, description: str | None) -> str:
     raw = (merchant or description or "").upper().strip()
-    raw = re.sub(r"[^A-Z0-9]+", " ", raw)
-    raw = re.sub(r"\s+", " ", raw).strip()
-    return raw[:160]
+    return re.sub(r"[^A-Z0-9]+", " ", raw).strip()[:160]
 
 
 def _memory_is_tight(threshold_percent: float = 90.0) -> bool:
-    """Best-effort local memory-pressure check. Fails soft: if psutil isn't
-    installed or the check raises for any reason, assume memory is fine rather
-    than block categorization on a diagnostic that couldn't run."""
     try:
         import psutil
 
@@ -42,6 +44,7 @@ class CategorizationResult:
     left_uncategorized: int
     ollama_unavailable: bool
     memory_paused: bool = False
+    status: str = "complete"
 
 
 class CategorizationService:
@@ -51,7 +54,7 @@ class CategorizationService:
         transactions: TransactionRepository,
         buckets: BucketRepository,
         merchant_rules: MerchantRuleRepository,
-        llm: OllamaClassifierClient,
+        llm: Classifier | None = None,
         pace_seconds: float = 0.0,
     ) -> None:
         self.transactions = transactions
@@ -60,77 +63,123 @@ class CategorizationService:
         self.llm = llm
         self.pace_seconds = pace_seconds
 
-    def categorize_unassigned(self, limit: int = DEFAULT_BATCH_LIMIT) -> CategorizationResult:
-        candidates = self.transactions.list_unassigned(limit)
-        active_buckets = self.buckets.list_active()
-        by_name = {b.name: b.id for b in active_buckets}
-        names = list(by_name)
-        rule_applied = 0
-        llm_applied = 0
+    def apply_rules(self, limit: int = RULE_BATCH_LIMIT) -> tuple[int, int]:
+        candidates = self.transactions.list_for_categorization(limit)
+        if not candidates:
+            return 0, 0
+        buckets = {bucket.name.casefold(): bucket.id for bucket in self.buckets.list_active()}
+        active_ids = set(buckets.values())
+        rules = {rule.merchant_key: rule.bucket_id for rule in self.merchant_rules.list_all() if rule.bucket_id in active_ids}
+        applied = []
+        unresolved = []
+
+        for row in candidates:
+            key = merchant_key(row.merchant_name, row.description)
+            if key in rules:
+                applied.append((row, rules[key], "merchant_rule", 1.0))
+                continue
+            mapped = PLAID_BUCKETS.get(row.pfc_detailed or "")
+            if mapped and row.pfc_confidence in HIGH_PLAID_CONFIDENCE and mapped.casefold() in buckets:
+                applied.append((row, buckets[mapped.casefold()], "plaid_rule", 0.98 if row.pfc_confidence == "VERY_HIGH" else 0.90))
+                continue
+            # A real Unknown bucket keeps legacy reports consistent while the
+            # source marks these rows as eligible for a future AI pass.
+            unresolved.append((row, buckets.get("unknown"), "rules_unmatched", 0.0))
+
+        return self.transactions.apply_automatic(applied), self.transactions.apply_automatic(unresolved)
+
+    def apply_model(
+        self,
+        classifier: Classifier,
+        *,
+        limit: int = DEFAULT_BATCH_LIMIT,
+        local: bool = True,
+        source: str = "local_llm",
+        still_current: Callable[[], bool] = lambda: True,
+        assets=None,
+        pace_seconds: float | None = None,
+    ) -> CategorizationResult:
+        rows = self.transactions.list_for_categorization(limit, model=True)
+        buckets = {bucket.name: bucket.id for bucket in self.buckets.list_active()}
+        unknown = next((key for name, key in buckets.items() if name.casefold() == "unknown"), None)
+        active_ids = set(buckets.values())
+        rules = {rule.merchant_key: rule.bucket_id for rule in self.merchant_rules.list_all() if rule.bucket_id in active_ids}
+        cache: dict[tuple, LLMClassification] = {}
+        deadline = time.monotonic() + MODEL_BATCH_SECONDS
+        applied = 0
         left = 0
-        unavailable = False
-        memory_paused = False
+        rules_applied = 0
+        status = "complete"
+        pause = self.pace_seconds if pace_seconds is None else pace_seconds
 
-        unknown_id = by_name.get("Unknown")
+        def classify(key: tuple, predict: Callable[[], LLMClassification]) -> LLMClassification:
+            if not still_current():
+                raise ProviderUnavailable(status="paused")
+            if key not in cache:
+                if len(cache) >= MODEL_CALL_LIMIT or time.monotonic() >= deadline:
+                    raise ProviderUnavailable(status="batch_limit")
+                if local and _memory_is_tight():
+                    raise ProviderUnavailable(status="memory_paused")
+                if local and cache and pause:
+                    time.sleep(pause)
+                cache[key] = predict()
+                if not still_current():
+                    raise ProviderUnavailable(status="paused")
+            return cache[key]
 
-        for tx in candidates:
-            key = merchant_key(tx.merchant_name, tx.description)
-            rule = self.merchant_rules.get_by_key(key) if key else None
-            if rule:
-                self.transactions.assign_bucket(
-                    tx.transaction_id, rule.bucket_id, source="merchant_rule", confidence=1.0
+        try:
+            if assets is not None:
+                for asset in assets.list_pending_assets(limit):
+                    institution = asset.institution or ""
+                    result = classify(
+                        ("asset", asset.name, institution if local else ""),
+                        lambda: classifier.classify_asset(
+                            asset_name=asset.name, institution=institution, buckets=list(ASSET_BUCKETS),
+                        ),
+                    )
+                    category = result.bucket_name if result.bucket_name in ASSET_BUCKETS else asset.asset_bucket
+                    assets.apply_asset_classification(asset, category)
+
+            for row in rows:
+                rule = rules.get(merchant_key(row.merchant_name, row.description))
+                if rule is not None:
+                    rules_applied += self.transactions.apply_automatic([(row, rule, "merchant_rule", 1.0)])
+                    continue
+                merchant = row.merchant_name or ""
+                description = row.description if local else ""
+                if not local:
+                    merchant = re.sub(r"\b\d{5,}\b", "", merchant_key(merchant, None)).strip()
+                result = classify(
+                    ("transaction", merchant, description, row.pfc_primary, row.pfc_detailed),
+                    lambda: classifier.classify(
+                        merchant=merchant, description=description,
+                        pfc_primary=row.pfc_primary, pfc_detailed=row.pfc_detailed, buckets=list(buckets),
+                    ),
                 )
-                rule_applied += 1
-                continue
-
-            if not unavailable and not memory_paused and _memory_is_tight():
-                # Stop calling the local model for the rest of this batch rather
-                # than push an already-strained machine further. The remaining
-                # transactions fall back to Unknown, same as when Ollama is down,
-                # and get a real classification attempt on the next sync.
-                memory_paused = True
-
-            if unavailable or memory_paused:
-                if unknown_id is not None:
-                    self.transactions.assign_bucket(tx.transaction_id, unknown_id, source="unknown_fallback", confidence=0.0)
-                left += 1
-                continue
-            if self.pace_seconds:
-                time.sleep(self.pace_seconds)
-            try:
-                result = self.llm.classify(
-                    merchant=tx.merchant_name or "",
-                    description=tx.description,
-                    pfc_primary=tx.pfc_primary,
-                    pfc_detailed=tx.pfc_detailed,
-                    buckets=names,
-                )
-            except OllamaUnavailable:
-                unavailable = True
-                left += 1
-                continue
-
-            if result.bucket_name and result.bucket_name in by_name:
-                self.transactions.assign_bucket(
-                    tx.transaction_id,
-                    by_name[result.bucket_name],
-                    source="local_llm",
-                    confidence=result.confidence,
-                )
-                llm_applied += 1
-            else:
-                if unknown_id is not None:
-                    self.transactions.assign_bucket(tx.transaction_id, unknown_id, source="unknown_fallback", confidence=0.0)
-                else:
-                    self.transactions.mark_uncategorized(tx.transaction_id, source="local_llm")
-                left += 1
-
+                bucket_id = buckets.get(result.bucket_name)
+                if bucket_id is None or bucket_id == unknown:
+                    left += self.transactions.apply_automatic([(row, unknown, "model_abstained", 0.0)])
+                    continue
+                applied += self.transactions.apply_automatic([(row, bucket_id, source, result.confidence)])
+        except ProviderUnavailable as exc:
+            status = exc.status
+        if status != "complete":
+            left = len(rows) - applied - rules_applied
         return CategorizationResult(
-            rule_applied=rule_applied,
-            llm_applied=llm_applied,
-            left_uncategorized=left,
-            ollama_unavailable=unavailable,
-            memory_paused=memory_paused,
+            rules_applied, applied, left,
+            status in {"unavailable", "reconnect", "configuration", "invalid_response", "limit_reached"},
+            status == "memory_paused", status,
+        )
+
+    def categorize_unassigned(self, limit: int = DEFAULT_BATCH_LIMIT) -> CategorizationResult:
+        """Run one bounded pass for direct callers and diagnostics."""
+        rules, unresolved = self.apply_rules(limit)
+        if self.llm is None:
+            return CategorizationResult(rules, 0, unresolved, False)
+        result = self.apply_model(self.llm, limit=limit)
+        return CategorizationResult(
+            rules + result.rule_applied, result.llm_applied, result.left_uncategorized,
+            result.ollama_unavailable, result.memory_paused, result.status,
         )
 
     def manual_assign(self, transaction_id: str, bucket_id: int | None, remember_merchant: bool) -> None:

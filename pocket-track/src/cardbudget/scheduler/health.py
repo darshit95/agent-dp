@@ -15,12 +15,14 @@ from __future__ import annotations
 
 import plistlib
 import socket
+import subprocess
 import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from cardbudget.categorization.profiles import PROVIDER_LABELS, CategorizationProfile
 from cardbudget.config import Settings
 from cardbudget.scheduler import autostart as app_autostart
 from cardbudget.scheduler import macos as macos_scheduler
@@ -105,12 +107,31 @@ def _check_hostname() -> Check:
 
 
 def _check_site() -> Check:
-    if not _http_ok(f"https://{HOSTNAME_LOCAL}/"):
+    # Caddy installs its local CA in macOS Keychain. The system curl
+    # validates it using that trust store, unlike Python's CA bundle.
+    try:
+        result = subprocess.run(
+            [
+                "/usr/bin/curl", "--disable", "--noproxy", "*", "--fail",
+                "--silent", "--max-time", "3", "--output", "/dev/null",
+                f"https://{HOSTNAME_LOCAL}/health/local",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=4,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return Check("Site", False, "HTTPS check could not run")
+    if result.returncode:
         return Check("Site", False, f"https://{HOSTNAME_LOCAL} not reachable")
     return Check("Site", True, f"https://{HOSTNAME_LOCAL} reachable")
 
 
-def _check_ollama(settings: Settings) -> Check:
+def _check_provider(profile: CategorizationProfile) -> Check:
+    if profile.provider != "ollama" or profile.paused:
+        detail = PROVIDER_LABELS[profile.provider] + (" (paused)" if profile.paused else "")
+        return Check("Categorization", True, detail, advisory=True)
     if not _http_ok(OLLAMA_URL, timeout=2.0):
         return Check(
             "Local AI (Ollama)",
@@ -118,7 +139,7 @@ def _check_ollama(settings: Settings) -> Check:
             "not reachable; categorization falls back to rules/manual",
             advisory=True,
         )
-    return Check("Local AI (Ollama)", True, f"reachable (model {settings.ollama_model})", advisory=True)
+    return Check("Local AI (Ollama)", True, f"reachable (model {profile.model})", advisory=True)
 
 
 def _check_scheduler() -> Check:
@@ -131,7 +152,7 @@ def _check_scheduler() -> Check:
     return Check("Sync schedule", True, f"daily at {hours}", advisory=True)
 
 
-def collect(settings: Settings) -> list[Check]:
+def collect(settings: Settings, profile: CategorizationProfile | None = None) -> list[Check]:
     if sys.platform != "darwin":
         return [Check("Platform", False, "status checks currently support macOS only")]
     return [
@@ -140,14 +161,14 @@ def collect(settings: Settings) -> list[Check]:
         _check_https_proxy(),
         _check_hostname(),
         _check_site(),
-        _check_ollama(settings),
+        _check_provider(profile or CategorizationProfile(provider=settings.categorization_default, model=settings.ollama_model)),
         _check_scheduler(),
     ]
 
 
-def report(settings: Settings) -> int:
+def report(settings: Settings, profile: CategorizationProfile | None = None) -> int:
     """Print the report. Returns a process exit code (0 healthy, 1 degraded)."""
-    checks = collect(settings)
+    checks = collect(settings, profile)
     width = max(len(check.name) for check in checks)
     failed_required = False
 

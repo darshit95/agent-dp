@@ -1,0 +1,70 @@
+<section id="ai-connections" class="panel settings-section">
+  <div class="section-heading">
+    <div>
+      <h2>Categorization</h2>
+      <p class="muted compact">{{ provider_labels[ai_profile.provider] }}{% if ai_profile.model %} · {{ ai_profile.model }}{% endif %}{% if ai_profile.paused %} · Paused{% endif %}</p>
+    </div>
+  </div>
+  <p id="categorization-status" class="muted compact" role="status" data-status="{{ ai_status }}" {% if ai_status not in ai_status_messages %}hidden{% endif %}>{{ ai_status_messages.get(ai_status, '') }}</p>
+  {% if ai_last_test %}<p class="muted compact">Last successful connection test <time datetime="{{ ai_last_test }}">{{ ai_last_test[:16].replace('T', ' ') }} UTC</time></p>{% endif %}
+  {% if ai_account %}
+    <p class="muted compact">Using ChatGPT plan for eligible requests. <a href="https://chatgpt.com/settings/usage" rel="noreferrer">Manage usage</a></p>
+    <p class="muted compact">Connected account {{ ai_account }}</p>
+  {% elif ai_key_saved %}
+    <p class="muted compact">API key saved in your OS credential store.</p>
+  {% endif %}
+  <form class="stack-form" method="post" action="/settings/ai/provider">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Provider
+      <select id="categorization-provider" name="provider">
+        {% for value, label in provider_labels.items() %}
+          <option value="{{ value }}" {% if value == ai_profile.provider %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label data-ai-field="model">Model ID <input name="model" maxlength="160" placeholder="{{ ai_profile.model or 'Leave blank to use the provider default when available' }}"></label>
+    <label data-ai-field="endpoint">Local endpoint <input name="endpoint" maxlength="80" placeholder="{{ ai_profile.endpoint or 'http://127.0.0.1:8080/v1' }}"></label>
+    <p class="muted compact" data-ai-field="cloud">Cloud providers receive merchant names, Plaid category labels, and allowed bucket names for classification. Asset names are shared only when separately enabled.</p>
+    <label class="checkline" data-ai-field="cloud"><input type="checkbox" name="cloud_consent" value="true"> Allow the selected cloud provider to classify transactions</label>
+    <label class="checkline" data-ai-field="cloud"><input type="checkbox" name="scheduled_cloud" value="true" {% if ai_profile.scheduled_cloud %}checked{% endif %}> Use cloud AI during automatic and manual bank syncs</label>
+    <label class="checkline" data-ai-field="cloud"><input type="checkbox" name="cloud_assets" value="true" {% if ai_profile.cloud_assets %}checked{% endif %}> Allow cloud AI to classify assets by name</label>
+    <button class="small" type="submit">Save categorization settings</button>
+  </form>
+
+  {% if ai_profile.provider == 'chatgpt' %}
+    <form class="stack-form" method="post" action="/settings/ai/chatgpt/connect">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="small secondary" type="submit">Continue with ChatGPT</button>
+      {% if not ai_account %}<button class="small secondary" type="submit" name="new_account" value="true">Use a different ChatGPT account</button>{% endif %}
+    </form>
+  {% endif %}
+  {% if ai_profile.provider in ('openai', 'anthropic') %}
+    <form class="stack-form" method="post" action="/settings/ai/key">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Provider API key <input type="password" name="api_key" maxlength="512" required autocomplete="new-password"></label>
+      <button class="small secondary" type="submit">Save API key</button>
+    </form>
+  {% endif %}
+  {% if ai_profile.provider != 'rules' %}
+    <div class="top-actions ai-connection-actions">
+      {% for action, label in (('test', 'Test connection'), ('categorize', 'Categorize with AI'), ('pause', 'Resume model' if ai_profile.paused else 'Pause model'), ('disconnect', 'Disconnect')) %}
+        <form method="post" action="/settings/ai/{{ action }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          {% if action == 'pause' %}<input type="hidden" name="paused" value="{{ 'false' if ai_profile.paused else 'true' }}">{% endif %}
+          <button class="small secondary" type="submit" {% if ai_profile.paused and action == 'categorize' %}disabled{% endif %}>{{ label }}</button>
+        </form>
+      {% endfor %}
+    </div>
+    <p class="muted compact">Testing sends a synthetic transaction to the selected provider and may use its allowance.</p>
+  {% endif %}
+  {% if has_legacy_unknown %}
+    <details>
+      <summary>Retry older automatic Unknown assignments</summary>
+      <p class="muted compact">Review older automatic assignments with your current categorization rules.</p>
+      <form method="post" action="/settings/ai/retry-legacy">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="small secondary" type="submit">Queue older assignments</button>
+      </form>
+    </details>
+  {% endif %}
+</section>

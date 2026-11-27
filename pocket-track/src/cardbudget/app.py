@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -8,6 +9,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from cardbudget.auth.routes import router as auth_router
+from cardbudget.categorization.routes import router as categorization_router
 from cardbudget.config import Settings
 from cardbudget.icons import asset_bucket_icon, bucket_icon, liability_icon
 from cardbudget.plaid.routes import router as plaid_router
@@ -45,6 +47,7 @@ async def _security_headers(request: Request, call_next):
             "https://sandbox.plaid.com" if request.app.state.services.settings.plaid_environment == "sandbox"
             else "https://production.plaid.com"
         )
+        form_action = "'self' https://auth.openai.com" if request.url.path == "/settings" else "'self'"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "style-src 'self' 'unsafe-inline'; "
@@ -52,7 +55,7 @@ async def _security_headers(request: Request, call_next):
             "script-src 'self' https://cdn.plaid.com/link/v2/stable/link-initialize.js; "
             "frame-src https://cdn.plaid.com; "
             f"connect-src 'self' {plaid_api}; "
-            "form-action 'self'; "
+            f"form-action {form_action}; "
             "frame-ancestors 'none'; "
             "base-uri 'none'"
         )
@@ -67,7 +70,7 @@ async def _security_headers(request: Request, call_next):
             "frame-ancestors 'none'; "
             "base-uri 'none'"
         )
-    if request.url.path not in {"/static/app.css", "/static/app.js", "/static/plaid.js"}:
+    if request.url.path not in {"/static/app.css", "/static/app.js", "/static/plaid.js", "/static/ai-settings.js"}:
         response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -80,11 +83,20 @@ def create_app(
     resolved_settings = settings or Settings.from_env()
     resolved_services = services or bootstrap_services(resolved_settings)
 
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        resolved_services.categorization_worker.start()
+        try:
+            yield
+        finally:
+            resolved_services.categorization_worker.stop()
+
     app = FastAPI(
         title="PocketTrack",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
+        lifespan=lifespan,
     )
     app.state.services = resolved_services
 
@@ -109,5 +121,6 @@ def create_app(
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
     app.include_router(auth_router)
     app.include_router(plaid_router)
+    app.include_router(categorization_router)
     app.include_router(web_router)
     return app

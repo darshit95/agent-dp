@@ -2,10 +2,156 @@
 
 Private spending, budgeting, and net-worth tracking for **macOS and Windows**.
 
-## Pre-requisites
+## Install and start
 
-- **macOS 14+** or **Windows 10/11**.
-- A **free Plaid account**. PocketTrack ships no shared Plaid secret — every user brings their own.
+You’ll need Git and an internet connection for the first install. PocketTrack supports macOS 14 or later and Windows 10 or 11. **Rules only** is the default. Ollama and model API keys are optional.
+
+If you already cloned the repo, open the `pocket-track` folder and run just the launcher for your operating system.
+
+### macOS
+
+Open Terminal and run these commands. They put the clone in your local `Projects` folder.
+
+```bash
+mkdir -p "$HOME/Projects"
+cd "$HOME/Projects"
+git clone https://github.com/darshit95/agent-dp.git
+cd agent-dp/pocket-track
+./start.sh
+```
+
+The first run prepares Homebrew, Python 3.12, Caddy, and local HTTPS. Enter your Mac administrator password if prompted. When the launcher prints **Ready**, open [https://my-pocket-track](https://my-pocket-track).
+
+### Windows
+
+Open PowerShell in the folder where you want to keep the clone.
+
+```powershell
+git clone https://github.com/darshit95/agent-dp.git
+Set-Location .\agent-dp\pocket-track
+.\start.ps1
+```
+
+The launcher prepares the Python environment and can install Python 3.12 through `winget`. If `winget` is unavailable, install Python 3.12 before running the launcher. When it prints **Ready**, open [http://127.0.0.1:8000](http://127.0.0.1:8000).
+
+## First-time application setup
+
+1. Create your local PocketTrack username and password in the browser.
+2. To import bank transactions, obtain your own [Plaid Production credentials](#get-your-plaid-production-client-id-and-secret). Go to **Settings → Plaid credentials**, enter the Client ID and Production Secret, and select **Save securely**.
+3. Select **Connect bank**, complete Plaid Link, enable the cards you want to track, and select **Sync now**.
+
+You can open the app and track net worth manually while Plaid access is pending. To choose a model later, open [Settings → Categorization](#categorization-providers).
+
+## Stop
+
+### macOS
+
+```bash
+./stop.sh
+```
+
+### Windows
+
+```powershell
+.\stop.ps1
+```
+
+---
+
+> **Resource usage at a glance** ([details](#resource-usage)): new installs start in Rules-only mode. Optional model work runs in the background.
+
+## What PocketTrack does
+
+PocketTrack is a local-first personal finance application with two focused workflows:
+
+**Spending & budgets**
+
+- Connect credit cards using Plaid.
+- Track any credit card returned by the institution — there are no hardcoded card names.
+- Import posted transactions only.
+- Ignore pending transactions and obvious credit-card payment/AutoPay entries.
+- On macOS, refresh automatically at 8 AM and 8 PM.
+- Backfill historical months when needed.
+- Categorize transactions with saved merchant rules and high-confidence Plaid categories. Optionally refine unresolved transactions with a selected model.
+- Create custom spending buckets, including the default `Unknown` bucket.
+- Set monthly budgets and see clear within-budget / over-budget status.
+- Delete a transaction permanently from PocketTrack without it returning on the next Plaid sync.
+
+**Net worth**
+
+- Add assets and liabilities.
+- Edit asset name, institution, and value directly in the asset list.
+- Classify assets into:
+  - Cash & Cash Equivalents
+  - Taxable Investments
+  - Retirement & Health
+  - Alternative Investments
+  - Other Assets
+- Use local heuristics for initial asset classification and manually override it at any time. An optional model can help with ambiguous assets.
+- Exclude informational subtotal rows to avoid double counting.
+- Calculate `Net Worth = Assets - Liabilities`.
+- View asset allocation as a live donut chart.
+
+## Categorization providers
+
+Open **Settings → Categorization** to choose a provider.
+
+| Provider | Setup |
+|---|---|
+| Rules only | Default for new installs. Uses saved merchant rules, selected high-confidence Plaid categories, and local asset heuristics. |
+| ChatGPT plan | Select the provider, save, then choose **Continue with ChatGPT**. Grant plan usage in the browser and test with the model ID available to your account. This integration uses OpenAI’s local-app preview. |
+| OpenAI or Claude API key | Save the provider and model ID, then store your key in the OS credential store from Settings. Requests use the billing and limits of that key. |
+| Ollama | Choose Ollama in Settings to opt in. Install it separately and make the selected model available with `ollama pull <model>`, or start PocketTrack with `--update` once Ollama is installed. An older install's saved model ID is used when you opt in. |
+| Local OpenAI-compatible endpoint | Run a compatible server with structured Chat Completions and enter a model ID and a loopback URL such as `http://127.0.0.1:8080/v1`. |
+
+**Test connection** sends a synthetic transaction. Use **Categorize with AI** for a bounded pass. Cloud models run during bank sync only after you enable that option. Asset names require a separate cloud opt-in. On a provider error or quota limit, PocketTrack preserves remaining work for another pass and continues to import transactions.
+
+## Resource usage
+
+PocketTrack queues categorization in the encrypted database after import. A single worker handles manual sync, scheduled sync, backfill, and optional asset refinement. CLI imports also queue work, which the app takes when it is running. Previously queued work survives a restart.
+
+- Rules run in batches. Optional model passes reuse identical requests and allow up to 12 distinct calls per pass, with a 35-second budget for starting calls. A request already in flight may finish after that budget.
+- Local inference checks available memory before starting each new request. Ollama requests use a short 25-second keep-alive plus bounded context and output.
+- Cloud providers run inference remotely. Bank sync and categorization use separate paths, so provider delays do not block importing transactions.
+
+The historical August 2026 benchmark on an 8 GB Apple Silicon MacBook Air measured about **25 MB RSS** at idle, including the Ollama daemon, and about **3.5 GB RSS** for the loaded `qwen3.5:4b` runner. Smaller local models can reduce peak memory. Rules-only mode starts no model process. See [Scale & chaos testing](#scale--chaos-testing) for the original measurements.
+
+## Privacy & security
+
+PocketTrack is intentionally designed as a single-user local application.
+
+- The FastAPI backend binds only to `127.0.0.1`.
+- On macOS, `https://my-pocket-track` resolves only to your own Mac through `/etc/hosts`.
+- On macOS, Caddy is bound to loopback and provides locally trusted HTTPS on port 443. Windows currently uses `http://127.0.0.1:8000`.
+- The application database is encrypted with SQLCipher.
+- Plaid credentials, access tokens, database keys, and session secrets are stored in the operating-system Keychain rather than source code or the database.
+- Passwords are hashed with Argon2id.
+- Sessions are server-side, `HttpOnly`, `SameSite=Strict`, and `Secure` when accessed through the HTTPS URL.
+- CSRF protection, login throttling, restrictive CSP, Host-header protection, and HSTS over HTTPS are enabled.
+- Local mode keeps classification on the device. Optional cloud modes send normalized merchant names, Plaid category labels, and allowed bucket names. Cloud asset classification sends asset names only when enabled. API keys are held in the OS credential store. ChatGPT tokens are held in SQLCipher and are excluded from logical backups.
+- PocketTrack does not include money-transfer or payment-initiation functionality.
+
+PocketTrack's local data lives outside the Git repository in:
+
+```text
+~/.pockettrack/
+```
+
+Do not commit backups or secrets. The included `.gitignore` excludes the common local/runtime files.
+
+## Plaid
+
+Use your own Plaid developer credentials to import bank transactions.
+
+PocketTrack uses Plaid's Transactions flow only. It does not need Auth, Transfer, ACH, account/routing-number retrieval, or payment initiation.
+
+For development, set:
+
+```bash
+export POCKETTRACK_PLAID_ENVIRONMENT=sandbox
+```
+
+For normal use, the startup scripts default to Production.
 
 ### Get your Plaid Production Client ID and Secret
 
@@ -28,169 +174,7 @@ You need exactly two values: a **Client ID** and a **Production Secret**. Gettin
    | **Client ID** | `client_id` | One value, shared across environments |
    | **Production Secret** | Secret → **Production** row | Make sure you copy the **Production** secret, not Sandbox |
 
-5. **Keep them handy but do not put them in a file.** You paste them once into PocketTrack's Settings page after first launch (step 4 of [First-time application setup](#first-time-application-setup)), and they are stored in your operating system's Keychain — never in this repository, the database, or an `.env` file.
-
-## Start
-
-PocketTrack currently supports **macOS and Windows only**.
-
-### macOS
-
-```bash
-git clone https://github.com/darshit95/agent-dp.git
-cd agent-dp/pocket-track
-./start.sh
-```
-
-Open **https://my-pocket-track**.
-
-The first start installs/checks Python 3.12, Homebrew, Caddy, Ollama, Python dependencies, the local AI model, runs the test suite, configures the private local hostname and locally trusted HTTPS, installs the twice-daily refresh job (8 AM and 8 PM), and starts PocketTrack in the background. macOS may ask for your administrator password while configuring the local hostname/HTTPS certificate.
-
-### Windows
-
-```powershell
-git clone https://github.com/darshit95/agent-dp.git
-cd agent-dp/pocket-track
-.\start.ps1
-```
-
-Open **http://127.0.0.1:8000**.
-
-The first start installs/checks Python 3.12, Ollama, Python dependencies, the local AI model, runs the test suite, installs the twice-daily refresh job, and starts PocketTrack in the background.
-
-## Stop
-
-### macOS
-
-```bash
-./stop.sh
-```
-
-### Windows
-
-```powershell
-.\stop.ps1
-```
-
----
-
-> **Resource usage at a glance** ([details](#resource-usage)): idle, ~25 MB RAM / ~0% CPU. While the local AI categorizes transactions, up to ~3.5 GB RAM (the model's own size) / ~12–17% CPU, for ~1 minute typically, ~8–10 minutes worst case (150-transaction batch cap + Ollama's keep-alive tail) — then it drops back to idle.
-
-## What PocketTrack does
-
-PocketTrack is a local-first personal finance application with two focused workflows:
-
-**Spending & budgets**
-
-- Connect credit cards using Plaid.
-- Track any credit card returned by the institution — there are no hardcoded card names.
-- Import posted transactions only.
-- Ignore pending transactions and obvious credit-card payment/AutoPay entries.
-- Refresh automatically twice a day, at 8 AM and 8 PM.
-- Backfill historical months when needed.
-- Categorize transactions locally with Ollama and remember manual merchant corrections.
-- Create custom spending buckets, including the default `Unknown` bucket.
-- Set monthly budgets and see clear within-budget / over-budget status.
-- Delete a transaction permanently from PocketTrack without it returning on the next Plaid sync.
-
-**Net worth**
-
-- Add assets and liabilities.
-- Edit asset name, institution, and value directly in the asset list.
-- Classify assets into:
-  - Cash & Cash Equivalents
-  - Taxable Investments
-  - Retirement & Health
-  - Alternative Investments
-  - Other Assets
-- Use local AI for initial asset classification and manually override it at any time.
-- Exclude informational subtotal rows to avoid double counting.
-- Calculate `Net Worth = Assets - Liabilities`.
-- View asset allocation as a live donut chart.
-
-## Resource usage
-
-PocketTrack itself is lightweight; the local AI model is the one genuinely heavy piece, and only while it's actively running. Measured on an 8 GB Apple Silicon MacBook Air:
-
-**Idle** (server running, nothing syncing):
-
-| Process | Memory (RSS) | CPU |
-|---|---|---|
-| PocketTrack backend (`cardbudget serve`) | ~12 MB | ~0% |
-| Caddy (HTTPS proxy, macOS only) | ~9 MB | ~0% |
-| Ollama daemon (supervisor, no model loaded) | ~4 MB | ~0% |
-| **Total** | **~25 MB** | **~0%** |
-
-For comparison, a single busy browser tab commonly uses more memory than PocketTrack's entire idle footprint.
-
-**While categorizing** ( the local LLM loaded and actively classifying transactions ):
-
-| | Value |
-|---|---|
-| Model process (`llama-server`, spawned by Ollama) | **~3.5 GB RSS** (~44% of 8 GB total) |
-| Time to load the model (first call in a batch) | ~5–6 seconds |
-| Per-transaction classification, once loaded | ~1–2 seconds |
-| Process CPU during generation | ~12–17% per `ps` (Apple Silicon offloads most of the actual work to the GPU via Metal, which doesn't show up in that number — real utilization is higher) |
-
-That ~3.5 GB is essentially the size of the model itself (`qwen3.5:4b` is 3.4 GB on disk) and is inherent to running it — it isn't something PocketTrack's own code adds on top, and it doesn't grow much with a larger batch of transactions. What PocketTrack's code controls is how long that pressure is sustained and how it behaves under load:
-
-- Each categorization pass is capped (150 transactions by default) rather than trying to process an unbounded batch in one go — anything left over is simply picked up on the next sync.
-- Consecutive local-LLM calls are paced with a small delay (`POCKETTRACK_CATEGORIZATION_PACE_SECONDS`, default 0.35s) instead of firing back-to-back.
-- If system memory gets tight mid-batch, categorization stops calling the model early and falls back the remaining transactions to `Unknown` for now, rather than pushing an already-strained machine further; those are retried on the next sync.
-- Ollama keeps the model resident for a few minutes after the last call (its own default `keep_alive` behavior) rather than reloading it per transaction, so a batch of many transactions pays the ~5–6s load cost once, not per item.
-
-On memory-constrained machines, the most effective lever is choosing a smaller `POCKETTRACK_OLLAMA_MODEL` (see [Pre-requisites](#pre-requisites)) — that directly lowers the ~3.5 GB figure above, which nothing else here can do.
-
-For database-scale numbers (transaction counts up to 50k, query latency, DB file size) and injected-failure testing (Ollama down, Plaid errors, concurrent read/write load), see [Scale & chaos testing](#scale--chaos-testing).
-
-## Privacy & security
-
-PocketTrack is intentionally designed as a single-user local application.
-
-- The FastAPI backend binds only to `127.0.0.1`.
-- On macOS, `https://my-pocket-track` resolves only to your own Mac through `/etc/hosts`.
-- On macOS, Caddy is bound to loopback and provides locally trusted HTTPS on port 443. Windows currently uses `http://127.0.0.1:8000`.
-- The application database is encrypted with SQLCipher.
-- Plaid credentials, access tokens, database keys, and session secrets are stored in the operating-system Keychain rather than source code or the database.
-- Passwords are hashed with Argon2id.
-- Sessions are server-side, `HttpOnly`, `SameSite=Strict`, and `Secure` when accessed through the HTTPS URL.
-- CSRF protection, login throttling, restrictive CSP, Host-header protection, and HSTS over HTTPS are enabled.
-- Ollama runs locally; PocketTrack does not fall back to a remote LLM.
-- PocketTrack does not include money-transfer or payment-initiation functionality.
-
-PocketTrack's local data lives outside the Git repository in:
-
-```text
-~/.pockettrack/
-```
-
-Do not commit backups or secrets. The included `.gitignore` excludes the common local/runtime files.
-
-## First-time application setup
-
-After the platform-specific startup script completes:
-
-1. On macOS, open **https://my-pocket-track**. On Windows, open **http://127.0.0.1:8000**.
-2. Create your PocketTrack username and password.
-3. Open **Settings**.
-4. Enter your own Plaid Production Client ID and Production Secret once. They are stored in the operating-system credential store.
-5. Click **Connect bank** and complete Plaid Link.
-6. Expand each connected bank and enable only the credit cards you want PocketTrack to track.
-7. Click **Sync now**, or wait for the next automatic refresh.
-
-## Plaid
-
-Every PocketTrack user needs their own Plaid developer credentials. The repository contains no shared Plaid secret.
-
-PocketTrack uses Plaid's Transactions flow only. It does not need Auth, Transfer, ACH, account/routing-number retrieval, or payment initiation.
-
-For development, set:
-
-```bash
-export POCKETTRACK_PLAID_ENVIRONMENT=sandbox
-```
-
-For normal use, the startup scripts default to Production.
+5. **Keep them handy but do not put them in a file.** Enter them under **Settings → Plaid credentials** after first launch. PocketTrack stores them in your operating system’s credential store.
 
 ## Historical month import
 
@@ -210,7 +194,7 @@ pockettrack daily-sync
 
 ## Automatic sync schedule
 
-On macOS, `start.sh` installs a `launchd` agent that syncs **twice a day, at 8:00 AM and 8:00 PM**. On Windows, `start.ps1` installs the Windows equivalent.
+On macOS, `start.sh` installs a `launchd` agent that syncs **twice a day, at 8:00 AM and 8:00 PM**. On Windows, use **Sync now** in Settings.
 
 Each run reads *everything* Plaid has for every connected bank — it pages through Plaid's `transactions/sync` cursor until there is nothing left, so a missed run is caught up by the next one rather than skipped.
 
@@ -255,6 +239,8 @@ Plaid credentials/access tokens and the SQLCipher Keychain key are intentionally
 
 ## Diagnostics
 
+To refresh dependencies, run `./start.sh --update` on macOS or `.\start.ps1 -Update` on Windows. To run tests and diagnostics before startup, use `./start.sh --check` or `.\start.ps1 -Check`.
+
 ```bash
 source .venv/bin/activate
 pockettrack doctor
@@ -289,11 +275,11 @@ Publishing the source to GitHub lets other people install their own local instan
 - PocketTrack currently supports **macOS and Windows only**.
 - macOS 14 Sonoma or newer is recommended.
 - Windows 10 or Windows 11 is recommended.
-- Network access is needed during first setup to install dependencies, download the Ollama model, and communicate with Plaid.
+- Network access is needed to install dependencies and communicate with Plaid. Optional providers may also need network access.
 - On macOS, the startup script can install Homebrew and may prompt for administrator privileges.
-- On Windows, `winget` is recommended so `start.ps1` can install Python 3.12 and Ollama automatically.
-- Roughly **6 GB free disk** (3.4 GB local AI model + Python environment) and an internet connection for first setup.
-- The default local AI model (`qwen3.5:4b`) is sized for machines with **16 GB+ RAM**. On smaller machines (e.g. 8 GB), it can compete hard with everything else running for memory. Set the `POCKETTRACK_OLLAMA_MODEL` environment variable to a smaller Ollama model tag before first start if you're on constrained hardware — `pockettrack doctor` prints the configured model alongside total system RAM so you can check the two are a reasonable match. Categorization always runs locally either way, and paces/caps itself so it can't monopolize the machine; anything it skips is simply retried on the next sync. See [Resource usage](#resource-usage) for measured numbers.
+- On Windows, `winget` is recommended so `start.ps1` can install Python 3.12.
+- Local AI models require additional disk space. The default Ollama model takes about 3.4 GB if you choose to install it.
+- On an 8 GB Mac, Rules-only or a cloud provider avoids local model memory use. To use local AI, start with a smaller model and test it on a backfill.
 
 ## Development
 
@@ -315,7 +301,7 @@ Beyond the [Resource usage](#resource-usage) idle/categorizing numbers above, `s
 PYTHONPATH=src .venv/bin/python scripts/scale_chaos_report.py
 ```
 
-Results below are from a real run on the same 8 GB Apple Silicon MacBook Air as the numbers above, generated 2026-08-19.
+Results below are from the August 19, 2026 run on an 8 GB Apple Silicon MacBook Air. They describe the prior synchronous categorization path and serve as a baseline.
 
 ### Scale: read-path latency and database size
 

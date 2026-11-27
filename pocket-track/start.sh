@@ -14,7 +14,15 @@ CADDY_LABEL="com.pockettrack.caddy"
 CADDY_PLIST="/Library/LaunchDaemons/${CADDY_LABEL}.plist"
 CADDY_CONFIG_DIR="/Library/Application Support/PocketTrack"
 CADDY_CONFIG="${CADDY_CONFIG_DIR}/Caddyfile"
-MODEL="${POCKETTRACK_OLLAMA_MODEL:-qwen3.5:4b}"
+UPDATE=0
+CHECK=0
+for option in "$@"; do
+  case "$option" in
+    --update) UPDATE=1 ;;
+    --check) CHECK=1 ;;
+    *) echo "Usage: ./start.sh [--update] [--check]" >&2; exit 2 ;;
+  esac
+done
 
 mkdir -p "$RUNTIME"
 chmod 700 "$RUNTIME"
@@ -56,7 +64,7 @@ VENV_POCKETTRACK="$VENV/bin/pockettrack"
 # ----------------------------------------------------------------
 # Phase 0: stop anything already running, then build up from clean.
 #
-# start.sh is a full reinstall, so it begins by tearing down exactly what
+# start.sh refreshes the service configuration, so it first tears down what
 # stop.sh tears down. Doing this up front - rather than fighting the running
 # service later - is what makes the script safe to re-run from any state:
 #
@@ -132,41 +140,22 @@ brew list caddy >/dev/null 2>&1 || brew install caddy
 PYTHON="$(brew --prefix python@3.12)/bin/python3.12"
 CADDY="$(command -v caddy)"
 
-if ! command -v ollama >/dev/null 2>&1; then
-  say "Installing Ollama"
-  curl -fsSL https://ollama.com/install.sh | sh
-fi
-command -v ollama >/dev/null 2>&1 || fail "Ollama installation did not complete."
-
 say "Preparing Python environment"
 
 
-VENV_FRESHLY_BUILT=0
-
 create_venv() {
     say "Creating fresh Python virtual environment"
-    VENV_FRESHLY_BUILT=1
 
     rm -rf "$VENV"
 
     "$PYTHON" -m venv "$VENV"
 
-    "$VENV/bin/python" -m pip install \
-        --upgrade pip setuptools wheel
-
-    "$VENV/bin/python" -m pip install \
-        -e "${ROOT}[dev]"
+    install_dependencies
 }
 
-
-install_project() {
-    "$VENV_PYTHON" -m pip install \
-        --upgrade pip setuptools wheel
-
-    # IMPORTANT:
-    # Always install PocketTrack itself before tests or CLI commands.
-    "$VENV_PYTHON" -m pip install \
-        -e "${ROOT}[dev]"
+install_dependencies() {
+    "$VENV_PYTHON" -m pip install --upgrade pip setuptools wheel
+    "$VENV_PYTHON" -m pip install -e "${ROOT}[dev]"
 }
 
 
@@ -212,30 +201,17 @@ venv_console_script_is_healthy() {
 
 
 # ---------------------------------------------------------------
-# Create venv if it does not exist.
+# Build the virtual environment.
 # ---------------------------------------------------------------
-
-if [[ ! -x "$VENV_PYTHON" ]]; then
-    create_venv
-else
-    say "Existing virtual environment found"
-
-    # Reinstall current repository into the existing venv.
-    install_project
-fi
 
 unhide_venv_metadata
-
-
-# ---------------------------------------------------------------
-# Self-heal a corrupt/stale venv.
-# ---------------------------------------------------------------
-
 if ! venv_is_healthy || ! venv_console_script_is_healthy; then
-    say "Existing virtual environment is unhealthy; rebuilding automatically"
-
-    create_venv
-    unhide_venv_metadata
+  create_venv
+  unhide_venv_metadata
+elif [[ "$UPDATE" == "1" ]]; then
+  say "Updating PocketTrack dependencies"
+  install_dependencies
+  unhide_venv_metadata
 fi
 
 
@@ -264,41 +240,36 @@ print("Package:     OK")
 print("CLI:         OK")
 PYVERIFY
 
-say "Starting local AI"
-if ! curl -fsS --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
-  nohup ollama serve >"$OLLAMA_LOG" 2>&1 &
-  echo $! > "$OLLAMA_PID_FILE"
-  for _ in {1..20}; do
-    curl -fsS --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break
-    sleep 1
-  done
-fi
-if curl -fsS --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
-  ollama pull "$MODEL"
-else
-  echo "Warning: Ollama is not reachable; PocketTrack will still run and use manual/heuristic categorization."
-fi
-
-say "Verifying PocketTrack installation"
-
-"$VENV_PYTHON" - <<'PYAPPVERIFY'
-import cardbudget
-from cardbudget.app import create_app
-from cardbudget.cli import main
-
-print("PocketTrack application import: OK")
-PYAPPVERIFY
-
-if [[ "$VENV_FRESHLY_BUILT" == "1" ]]; then
-  say "Running tests"
-  "$VENV_PYTHON" -m pytest -q "$ROOT/tests"
-else
-  say "Skipping test suite (existing, healthy virtual environment)"
-  echo "Run '.venv/bin/python -m pytest -q tests' manually after pulling code changes."
+PROVIDER="$("$VENV_POCKETTRACK" categorization-provider)"
+if [[ "$PROVIDER" == "ollama" ]]; then
+  say "Preparing the selected Ollama provider"
+  MODEL="$("$VENV_POCKETTRACK" categorization-provider --model)"
+  if command -v ollama >/dev/null 2>&1; then
+    if ! curl -fsS --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+      nohup ollama serve >"$OLLAMA_LOG" 2>&1 &
+      echo $! > "$OLLAMA_PID_FILE"
+      for _ in {1..10}; do
+        curl -fsS --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break
+        sleep 1
+      done
+    fi
+    if ! ollama show "$MODEL" >/dev/null 2>&1; then
+      if [[ "$UPDATE" == "1" ]]; then
+        ollama pull "$MODEL" || echo "Warning: model download failed. Rules-only classification is available."
+      else
+        echo "Ollama model $MODEL is unavailable. Run ollama pull $MODEL or restart with --update."
+      fi
+    fi
+  else
+    echo "Ollama is selected. Install it from ollama.com and run ollama pull $MODEL to enable local AI."
+  fi
 fi
 
-say "Running security diagnostics"
-"$VENV_POCKETTRACK" doctor
+if [[ "$CHECK" == "1" ]]; then
+  say "Running tests and diagnostics"
+  PYTHONDONTWRITEBYTECODE=1 "$VENV_PYTHON" -m pytest -q -p no:cacheprovider "$ROOT/tests"
+  "$VENV_POCKETTRACK" doctor
+fi
 
 say "Preparing private local hostname"
 if ! grep -Eq "(^|[[:space:]])${HOSTNAME_LOCAL}([[:space:]]|$)" /etc/hosts; then
@@ -343,7 +314,6 @@ fi
 rm -f "$APP_PID_FILE"
 
 export POCKETTRACK_PLAID_ENVIRONMENT="${POCKETTRACK_PLAID_ENVIRONMENT:-production}"
-export POCKETTRACK_OLLAMA_MODEL="$MODEL"
 
 # The app runs as a LaunchAgent, not a bare nohup process, so it comes back after
 # a restart and restarts itself if it crashes. It must be a user agent (not a
