@@ -1,10 +1,20 @@
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 CORE_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS app_meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS categorization_work (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    requested INTEGER NOT NULL DEFAULT 0 CHECK (requested BETWEEN 0 AND 2),
+    running INTEGER NOT NULL DEFAULT 0 CHECK (running BETWEEN 0 AND 2),
+    owner TEXT NULL,
+    expires_at REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'idle'
+);
+INSERT OR IGNORE INTO categorization_work(id) VALUES (1);
 
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -97,6 +107,10 @@ CREATE TABLE IF NOT EXISTS transactions (
 CREATE INDEX IF NOT EXISTS idx_transactions_account_id ON transactions(account_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_budget_date ON transactions(budget_date);
 CREATE INDEX IF NOT EXISTS idx_transactions_pending_id ON transactions(pending_transaction_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_categorization
+    ON transactions(classification_source, updated_at, transaction_id)
+    WHERE is_removed = 0 AND pending = 0
+      AND (classification_source IS NULL OR classification_source = 'rules_unmatched');
 
 CREATE TABLE IF NOT EXISTS deleted_transactions (
     transaction_id TEXT PRIMARY KEY,
@@ -149,6 +163,7 @@ CREATE TABLE IF NOT EXISTS asset_rules (
 # column is missing. Append-only, and every column must be nullable or defaulted.
 ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("buckets", "icon", "TEXT NULL"),
+    ("assets", "classification_pending", "INTEGER NOT NULL DEFAULT 0 CHECK (classification_pending IN (0, 1))"),
 )
 
 DEFAULT_BUCKETS = (

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Literal
 
@@ -26,6 +27,7 @@ class Settings(BaseModel):
     login_lockout_seconds: int = Field(default=30, ge=1, le=600)
     password_min_length: int = Field(default=12, ge=10, le=64)
     plaid_environment: Literal["sandbox", "production"] = "production"
+    categorization_default: Literal["rules", "ollama"] = "rules"
     ollama_model: str = Field(default="qwen3.5:4b", min_length=1, max_length=100, pattern=r"^[A-Za-z0-9._:/-]+$")
     # Delay between consecutive local-LLM categorization calls. Each call is a
     # blocking local inference request; on memory-constrained hardware, running
@@ -51,21 +53,27 @@ class Settings(BaseModel):
         self.data_dir.mkdir(parents=True, exist_ok=True)
         if os.name == "posix":
             os.chmod(self.data_dir, 0o700)
-        tmp = self.preferences_path.with_suffix(".json.tmp")
-        tmp.write_text(
-            json.dumps(
-                {
-                    "plaid_environment": self.plaid_environment,
-                    "ollama_model": self.ollama_model,
-                },
-                indent=2,
-                sort_keys=True,
-            )
-            + "\n"
-        )
-        if os.name == "posix":
-            os.chmod(tmp, 0o600)
-        tmp.replace(self.preferences_path)
+        content = json.dumps(
+            {
+                "plaid_environment": self.plaid_environment,
+                "ollama_model": self.ollama_model,
+            },
+            indent=2,
+            sort_keys=True,
+        ) + "\n"
+        try:
+            if self.preferences_path.read_text() == content:
+                return
+        except FileNotFoundError:
+            pass
+        fd, name = tempfile.mkstemp(dir=self.data_dir, prefix=".preferences-")
+        tmp = Path(name)
+        try:
+            with os.fdopen(fd, "w") as handle:
+                handle.write(content)
+            tmp.replace(self.preferences_path)
+        finally:
+            tmp.unlink(missing_ok=True)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -86,7 +94,9 @@ class Settings(BaseModel):
                 model = payload.get("ollama_model")
                 if isinstance(model, str) and model:
                     values["ollama_model"] = model
-            except (OSError, ValueError, TypeError):
+                # Earlier launchers wrote their Ollama defaults for everyone.
+                # An explicit provider selection lives in the database.
+            except (OSError, ValueError, TypeError, AttributeError):
                 pass
 
         pairs = (

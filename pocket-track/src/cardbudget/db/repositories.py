@@ -104,6 +104,8 @@ class TransactionRecord:
     bucket_name: str | None
     classification_source: str | None
     classification_confidence: float | None
+    pfc_confidence: str | None = None
+    updated_at: str = ""
 
 
 @dataclass(frozen=True)
@@ -791,6 +793,13 @@ class TransactionRepository:
                 pfc_primary = excluded.pfc_primary,
                 pfc_detailed = excluded.pfc_detailed,
                 pfc_confidence = excluded.pfc_confidence,
+                classification_source = CASE
+                    WHEN transactions.classification_source = 'rules_unmatched'
+                     AND (transactions.merchant_name IS NOT excluded.merchant_name
+                          OR transactions.description IS NOT excluded.description
+                          OR transactions.pfc_detailed IS NOT excluded.pfc_detailed
+                          OR transactions.pfc_confidence IS NOT excluded.pfc_confidence)
+                    THEN NULL ELSE transactions.classification_source END,
                 is_removed = 0,
                 updated_at = excluded.updated_at
             """,
@@ -825,6 +834,8 @@ class TransactionRepository:
                 self._upsert(conn, row)
             for row in modified:
                 self._upsert(conn, row)
+            if added or modified:
+                conn.execute("UPDATE categorization_work SET requested = MAX(requested, 1) WHERE id = 1")
             for transaction_id in removed_transaction_ids:
                 conn.execute(
                     "UPDATE transactions SET is_removed = 1, updated_at = ? WHERE transaction_id = ?",
@@ -850,6 +861,8 @@ class TransactionRepository:
                 if deleted:
                     continue
                 self._upsert(conn, row)
+            if rows:
+                conn.execute("UPDATE categorization_work SET requested = MAX(requested, 1) WHERE id = 1")
 
     @staticmethod
     def _record(row) -> TransactionRecord:
@@ -864,20 +877,25 @@ class TransactionRepository:
             bucket_name=None if row[14] is None else str(row[14]),
             classification_source=None if row[15] is None else str(row[15]),
             classification_confidence=None if row[16] is None else float(row[16]),
+            pfc_confidence=row[17], updated_at=str(row[18]),
         )
 
-    def _select(self, where: str = "", params: tuple = (), limit: int = 100) -> list[TransactionRecord]:
+    def _select(self, where: str = "", params: tuple = (), limit: int = 100, *, categorization: bool = False) -> list[TransactionRecord]:
         safe_limit = min(max(int(limit), 1), 500)
         sql = """
             SELECT t.transaction_id, t.account_id, a.card_name, t.amount_cents,
                    t.iso_currency_code, t.posted_date, t.authorized_date, t.budget_date,
                    t.merchant_name, t.description, t.pending, t.pfc_primary, t.pfc_detailed,
-                   t.bucket_id, b.name, t.classification_source, t.classification_confidence
+                   t.bucket_id, b.name, t.classification_source, t.classification_confidence,
+                   t.pfc_confidence, t.updated_at
             FROM transactions t
             JOIN accounts a ON a.account_id = t.account_id
             LEFT JOIN buckets b ON b.id = t.bucket_id
             WHERE t.is_removed = 0
-        """ + where + " ORDER BY COALESCE(t.budget_date, t.posted_date) DESC, t.created_at DESC LIMIT ?"
+        """ + where
+        order = ("t.updated_at, t.transaction_id" if categorization
+                 else "COALESCE(t.budget_date, t.posted_date) DESC, t.created_at DESC")
+        sql += f" ORDER BY {order} LIMIT ?"
         with self.db.connection() as conn:
             rows = conn.execute(sql, (*params, safe_limit)).fetchall()
         return [self._record(r) for r in rows]
@@ -916,6 +934,45 @@ class TransactionRepository:
 
     def list_unassigned(self, limit: int = 200) -> list[TransactionRecord]:
         return self._select(" AND t.bucket_id IS NULL AND t.pending = 0 AND t.classification_source IS NULL", (), limit)
+
+    def list_for_categorization(self, limit: int, *, model: bool = False) -> list[TransactionRecord]:
+        source = "t.classification_source = 'rules_unmatched'" if model else "t.classification_source IS NULL"
+        return self._select(f" AND t.pending = 0 AND {source}", (), limit, categorization=True)
+
+    def apply_automatic(self, updates: list[tuple[TransactionRecord, int | None, str, float]]) -> int:
+        if not updates:
+            return 0
+        now = to_iso(utc_now())
+        count = 0
+        with self.db.transaction() as conn:
+            for row, bucket_id, source, confidence in updates:
+                count += conn.execute(
+                    """
+                    UPDATE transactions
+                       SET bucket_id = ?, classification_source = ?, classification_confidence = ?, updated_at = ?
+                     WHERE transaction_id = ? AND is_removed = 0 AND pending = 0
+                       AND updated_at = ? AND classification_source IS ?
+                       AND (? IS NULL OR EXISTS (SELECT 1 FROM buckets WHERE id = ? AND active = 1))
+                    """,
+                    (bucket_id, source, confidence, now, row.transaction_id, row.updated_at,
+                     row.classification_source, bucket_id, bucket_id),
+                ).rowcount
+        return count
+
+    def has_legacy_unknown(self) -> bool:
+        with self.db.connection() as conn:
+            return conn.execute(
+                "SELECT 1 FROM transactions WHERE is_removed = 0 AND classification_source = 'unknown_fallback' LIMIT 1"
+            ).fetchone() is not None
+
+    def requeue_legacy_unknown(self) -> int:
+        with self.db.transaction() as conn:
+            return conn.execute(
+                """
+                UPDATE transactions SET classification_source = NULL, classification_confidence = NULL
+                 WHERE is_removed = 0 AND pending = 0 AND classification_source = 'unknown_fallback'
+                """
+            ).rowcount
 
     def get(self, transaction_id: str) -> TransactionRecord | None:
         rows = self._select(" AND t.transaction_id = ?", (transaction_id,), 1)
@@ -1011,6 +1068,8 @@ class AssetRecord:
     current_value_cents: int
     asset_bucket: str
     include_in_net_worth: bool
+    classification_pending: bool = False
+    updated_at: str = ""
 
 
 @dataclass(frozen=True)
@@ -1046,6 +1105,7 @@ class NetWorthRepository:
         return AssetRecord(
             id=int(row[0]), name=str(row[1]), institution=None if row[2] is None else str(row[2]),
             current_value_cents=int(row[3]), asset_bucket=str(row[4]), include_in_net_worth=bool(row[5]),
+            classification_pending=bool(row[6]), updated_at=str(row[7]),
         )
 
     @staticmethod
@@ -1058,19 +1118,22 @@ class NetWorthRepository:
     def list_assets(self) -> list[AssetRecord]:
         with self.db.connection() as conn:
             rows = conn.execute(
-                "SELECT id, name, institution, current_value_cents, asset_bucket, include_in_net_worth FROM assets ORDER BY id"
+                "SELECT id, name, institution, current_value_cents, asset_bucket, include_in_net_worth, classification_pending, updated_at FROM assets ORDER BY id"
             ).fetchall()
         return [self._asset_record(row) for row in rows]
 
     def get_asset(self, asset_id: int) -> AssetRecord | None:
         with self.db.connection() as conn:
             row = conn.execute(
-                "SELECT id, name, institution, current_value_cents, asset_bucket, include_in_net_worth FROM assets WHERE id = ?",
+                "SELECT id, name, institution, current_value_cents, asset_bucket, include_in_net_worth, classification_pending, updated_at FROM assets WHERE id = ?",
                 (asset_id,),
             ).fetchone()
         return None if not row else self._asset_record(row)
 
-    def create_asset(self, *, name: str, institution: str, value_cents: int, asset_bucket: str, include: bool) -> AssetRecord:
+    def create_asset(
+        self, *, name: str, institution: str, value_cents: int, asset_bucket: str,
+        include: bool, classification_pending: bool = False,
+    ) -> AssetRecord:
         from cardbudget.db.schema import ASSET_BUCKETS
         clean_name = self._clean_text(name, required=True)
         clean_institution = self._clean_text(institution, required=False)
@@ -1081,10 +1144,12 @@ class NetWorthRepository:
         now = to_iso(utc_now())
         with self.db.transaction() as conn:
             cur = conn.execute(
-                "INSERT INTO assets(name, institution, current_value_cents, asset_bucket, include_in_net_worth, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (clean_name, clean_institution, value_cents, asset_bucket, 1 if include else 0, now, now),
+                "INSERT INTO assets(name, institution, current_value_cents, asset_bucket, include_in_net_worth, created_at, updated_at, classification_pending) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (clean_name, clean_institution, value_cents, asset_bucket, 1 if include else 0, now, now, int(classification_pending)),
             )
             asset_id = int(cur.lastrowid)
+            if classification_pending:
+                conn.execute("UPDATE categorization_work SET requested = MAX(requested, 1) WHERE id = 1")
         return self.get_asset(asset_id)  # type: ignore[return-value]
 
     def update_asset(self, asset_id: int, *, name: str, institution: str, value_cents: int, asset_bucket: str, include: bool) -> None:
@@ -1097,11 +1162,33 @@ class NetWorthRepository:
             raise ValueError("Unknown asset category.")
         with self.db.transaction() as conn:
             cur = conn.execute(
-                "UPDATE assets SET name = ?, institution = ?, current_value_cents = ?, asset_bucket = ?, include_in_net_worth = ?, updated_at = ? WHERE id = ?",
+                "UPDATE assets SET name = ?, institution = ?, current_value_cents = ?, asset_bucket = ?, include_in_net_worth = ?, classification_pending = 0, updated_at = ? WHERE id = ?",
                 (clean_name, clean_institution, value_cents, asset_bucket, 1 if include else 0, to_iso(utc_now()), asset_id),
             )
             if cur.rowcount == 0:
                 raise ValueError("Unknown asset.")
+
+    def list_pending_assets(self, limit: int) -> list[AssetRecord]:
+        with self.db.connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, name, institution, current_value_cents, asset_bucket, include_in_net_worth,
+                       classification_pending, updated_at FROM assets
+                WHERE classification_pending = 1 ORDER BY id LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [self._asset_record(row) for row in rows]
+
+    def apply_asset_classification(self, asset: AssetRecord, bucket: str) -> bool:
+        with self.db.transaction() as conn:
+            return conn.execute(
+                """
+                UPDATE assets SET asset_bucket = ?, classification_pending = 0, updated_at = ?
+                WHERE id = ? AND classification_pending = 1 AND updated_at = ?
+                """,
+                (bucket, to_iso(utc_now()), asset.id, asset.updated_at),
+            ).rowcount == 1
 
     def delete_asset(self, asset_id: int) -> None:
         with self.db.transaction() as conn:

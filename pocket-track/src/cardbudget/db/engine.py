@@ -93,8 +93,13 @@ class Database:
                 raise
             if isinstance(exc, DatabaseOpenError):
                 raise
+            # Include the driver's own message. Without it every distinct
+            # cause - wrong key, SQLCipher version mismatch, corrupt file,
+            # permissions - produced the same opaque sentence, leaving no way
+            # to tell them apart from the error alone.
             raise DatabaseOpenError(
-                "Encrypted database could not be opened. The original file was left untouched."
+                "Encrypted database could not be opened. The original file was left untouched.\n"
+                f"Underlying error: {type(exc).__name__}: {exc}"
             ) from exc
 
     @contextmanager
@@ -120,7 +125,11 @@ class Database:
         ensure_private_directory(self.path.parent)
         existed = self.path.exists()
         with self.transaction() as conn:
-            conn.executescript(CORE_SCHEMA_SQL)
+            # executescript commits the wrapper's transaction before executing.
+            # Reacquire the write lock inside the script so concurrent startup
+            # cannot race between inspecting and adding a migration column.
+            conn.executescript("BEGIN IMMEDIATE;\n" + CORE_SCHEMA_SQL)
+            version = conn.execute("SELECT value FROM app_meta WHERE key = 'schema_version'").fetchone()
             self._add_missing_columns(conn)
             now = _utc_now_iso()
             conn.execute(
@@ -136,31 +145,37 @@ class Database:
                     (bucket_name, now, now),
                 )
 
-            # v0.3 intentionally does not display/store pending transactions.
-            # Remove any pending rows imported by earlier releases.
-            conn.execute("DELETE FROM transactions WHERE pending = 1")
+            if version is None or int(version[0]) < SCHEMA_VERSION:
+                # v0.3 intentionally does not display/store pending transactions.
+                # Remove any pending rows imported by earlier releases.
+                conn.execute("DELETE FROM transactions WHERE pending = 1")
 
-            # Hide obvious credit-card payment/autopay rows imported by earlier
-            # releases. Future syncs filter these before they reach the DB.
-            conn.execute(
-                """
-                UPDATE transactions
-                   SET is_removed = 1, updated_at = ?
-                 WHERE is_removed = 0
-                   AND (
-                       UPPER(COALESCE(pfc_detailed, '')) LIKE '%CREDIT_CARD_PAYMENT%'
-                       OR (UPPER(COALESCE(pfc_primary, '')) LIKE 'TRANSFER%'
-                           AND UPPER(COALESCE(pfc_detailed, '')) LIKE '%ACCOUNT_TRANSFER%')
-                       OR UPPER(description) LIKE '%AUTOPAY%PAYMENT%'
-                       OR UPPER(description) LIKE '%AUTOMATIC%PAYMENT%'
-                       OR UPPER(description) LIKE '%PAYMENT%THANK%YOU%'
-                       OR UPPER(description) LIKE '%ONLINE%PAYMENT%'
-                       OR UPPER(description) LIKE '%MOBILE%PYMT%'
-                       OR UPPER(description) LIKE '%MOBILE%PAYMENT%'
-                   )
-                """,
-                (now,),
-            )
+                # Hide obvious credit-card payment/autopay rows imported by earlier
+                # releases. Future syncs filter these before they reach the DB.
+                conn.execute(
+                    """
+                    UPDATE transactions
+                       SET is_removed = 1, updated_at = ?
+                     WHERE is_removed = 0
+                       AND (
+                           UPPER(COALESCE(pfc_detailed, '')) LIKE '%CREDIT_CARD_PAYMENT%'
+                           OR (UPPER(COALESCE(pfc_primary, '')) LIKE 'TRANSFER%'
+                               AND UPPER(COALESCE(pfc_detailed, '')) LIKE '%ACCOUNT_TRANSFER%')
+                           OR UPPER(description) LIKE '%AUTOPAY%PAYMENT%'
+                           OR UPPER(description) LIKE '%AUTOMATIC%PAYMENT%'
+                           OR UPPER(description) LIKE '%PAYMENT%THANK%YOU%'
+                           OR UPPER(description) LIKE '%ONLINE%PAYMENT%'
+                           OR UPPER(description) LIKE '%MOBILE%PYMT%'
+                           OR UPPER(description) LIKE '%MOBILE%PAYMENT%'
+                       )
+                    """,
+                    (now,),
+                )
+                conn.execute(
+                    "UPDATE categorization_work SET requested = 1 WHERE id = 1 AND requested = 0"
+                    " AND EXISTS (SELECT 1 FROM transactions"
+                    " WHERE pending = 0 AND is_removed = 0 AND classification_source IS NULL)"
+                )
         if os.name == "posix" and self.path.exists():
             os.chmod(self.path, 0o600)
         if not existed and self.require_cipher and self.has_plaintext_sqlite_header():

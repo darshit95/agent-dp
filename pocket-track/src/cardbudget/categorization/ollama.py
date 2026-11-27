@@ -1,20 +1,15 @@
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass
 from typing import Any
 
 import httpx
 
 
-class OllamaUnavailable(RuntimeError):
+from cardbudget.categorization.provider import LLMClassification, ProviderUnavailable, parse_classification
+
+
+class OllamaUnavailable(ProviderUnavailable):
     pass
-
-
-@dataclass(frozen=True)
-class LLMClassification:
-    bucket_name: str | None
-    confidence: float
 
 
 class OllamaClassifierClient:
@@ -22,13 +17,13 @@ class OllamaClassifierClient:
 
     base_url = "http://127.0.0.1:11434"
 
-    def __init__(self, model: str = "qwen3.5:4b", timeout_seconds: float = 45.0) -> None:
+    def __init__(self, model: str = "qwen3.5:4b", timeout_seconds: float = 15.0) -> None:
         self.model = model
         self.timeout_seconds = timeout_seconds
 
     def status(self) -> tuple[bool, bool]:
         try:
-            with httpx.Client(timeout=2.0) as client:
+            with httpx.Client(timeout=2.0, trust_env=False) as client:
                 response = client.get(f"{self.base_url}/api/tags")
                 response.raise_for_status()
                 models = response.json().get("models") or []
@@ -75,25 +70,17 @@ class OllamaClassifierClient:
             "format": schema,
             "stream": False,
             "think": False,
-            "options": {"temperature": 0},
+            "keep_alive": "25s",
+            "options": {"temperature": 0, "num_ctx": 2048, "num_predict": 96},
         }
         try:
-            with httpx.Client(timeout=self.timeout_seconds) as client:
+            with httpx.Client(timeout=self.timeout_seconds, trust_env=False) as client:
                 response = client.post(f"{self.base_url}/api/chat", json=body)
                 response.raise_for_status()
                 content = response.json()["message"]["content"]
-                parsed = json.loads(content)
-        except Exception as exc:
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
             raise OllamaUnavailable("Local Ollama categorization is unavailable.") from exc
-
-        bucket = str(parsed.get("bucket") or "Uncategorized")
-        if bucket not in allowed:
-            bucket = "Uncategorized"
-        try:
-            confidence = max(0.0, min(1.0, float(parsed.get("confidence", 0))))
-        except (TypeError, ValueError):
-            confidence = 0.0
-        return LLMClassification(None if bucket == "Uncategorized" else bucket, confidence)
+        return parse_classification(content, allowed)
 
 
     def classify_asset(
@@ -131,21 +118,14 @@ class OllamaClassifierClient:
             "format": schema,
             "stream": False,
             "think": False,
-            "options": {"temperature": 0},
+            "keep_alive": "25s",
+            "options": {"temperature": 0, "num_ctx": 2048, "num_predict": 96},
         }
         try:
-            with httpx.Client(timeout=self.timeout_seconds) as client:
+            with httpx.Client(timeout=self.timeout_seconds, trust_env=False) as client:
                 response = client.post(f"{self.base_url}/api/chat", json=body)
                 response.raise_for_status()
                 content = response.json()["message"]["content"]
-                parsed = json.loads(content)
-        except Exception as exc:
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
             raise OllamaUnavailable("Local Ollama asset classification is unavailable.") from exc
-        bucket = str(parsed.get("bucket") or "")
-        if bucket not in allowed:
-            bucket = allowed[-1] if allowed else None
-        try:
-            confidence = max(0.0, min(1.0, float(parsed.get("confidence", 0))))
-        except (TypeError, ValueError):
-            confidence = 0.0
-        return LLMClassification(bucket, confidence)
+        return parse_classification(content, allowed)

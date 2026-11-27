@@ -77,8 +77,11 @@ def real_database(data_dir: Path) -> Database:
     return Database(data_dir / "bench.db", BENCHMARK_DB_KEY, connector=sqlcipher.connect, require_cipher=True)
 
 
-def build_services(data_dir: Path):
-    settings = Settings(data_dir=data_dir, plaid_environment="sandbox")
+def build_services(data_dir: Path, *, ollama: bool = False):
+    settings = Settings(
+        data_dir=data_dir, plaid_environment="sandbox",
+        categorization_default="ollama" if ollama else "rules",
+    )
     db = real_database(data_dir)
     return bootstrap_services(settings, secret_store=MemorySecretStore(), database=db), settings, db
 
@@ -221,7 +224,7 @@ def run_live_categorization_sample(sample_size: int = 100) -> Section:
     tmp = Path(tempfile.mkdtemp(prefix="pockettrack-bench-"))
     original_memory_is_tight = categorization_module._memory_is_tight
     try:
-        services, _settings, _db = build_services(tmp)
+        services, _settings, _db = build_services(tmp, ollama=True)
         reachable, model_installed = services.ollama.status()
         if not reachable or not model_installed:
             section.add(f"- SKIPPED: Ollama reachable={reachable}, model installed={model_installed}")
@@ -231,13 +234,11 @@ def run_live_categorization_sample(sample_size: int = 100) -> Section:
         system_memory_percent = psutil.virtual_memory().percent
         if system_memory_percent >= 90.0:
             section.add(
-                f"- NOTE: this machine is genuinely at {system_memory_percent:.0f}% memory use right now - "
-                f"PocketTrack's own memory-pressure guard (_memory_is_tight, 90% threshold) would pause "
-                f"real sync categorization here. Disabling it *only for this isolated measurement* to get "
-                f"clean per-call model latency; see the Ollama-down/memory-pressure chaos notes for the "
-                f"guard's actual behavior under load."
+                f"- Host memory use is {system_memory_percent:.0f}%."
             )
-        categorization_module._memory_is_tight = lambda *_a, **_k: False
+        if categorization_module._memory_is_tight():
+            section.add("- SKIPPED: local inference paused due to host memory usage")
+            return section
 
         accounts = seed_accounts(services.plaid_repository, 1)
         seed_transactions(services.transactions, accounts, sample_size)
@@ -273,11 +274,7 @@ def run_live_categorization_sample(sample_size: int = 100) -> Section:
             p50 = statistics.median(sorted_lat)
             p95 = sorted_lat[int(len(sorted_lat) * 0.95)] if len(sorted_lat) > 1 else sorted_lat[0]
             section.add(f"- Per-call latency: p50={p50 * 1000:.0f} ms p95={p95 * 1000:.0f} ms max={sorted_lat[-1] * 1000:.0f} ms")
-            section.add(
-                f"- NOTE: a single sync only ever categorizes up to DEFAULT_BATCH_LIMIT=150 unassigned "
-                f"transactions (categorization/service.py) - the rest picks up on the next sync. At the "
-                f"measured p50, a full 150-transaction batch takes roughly {p50 * 150:.0f} s."
-            )
+            section.add("- Matching input is reused within the pass. Current worker limits apply.")
         section.add(f"- Result: rule_applied={result.rule_applied} local_llm={result.llm_applied} left_uncategorized={result.left_uncategorized} ollama_unavailable={result.ollama_unavailable} memory_paused={result.memory_paused}")
         section.add(f"- Process RSS during: {_fmt_mb(rss_before)} -> {_fmt_mb(rss_after)}")
     finally:
@@ -300,7 +297,7 @@ def chaos_ollama_down(tx_count: int = 200) -> Section:
     tmp = Path(tempfile.mkdtemp(prefix="pockettrack-bench-"))
     original_memory_is_tight = categorization_module._memory_is_tight
     try:
-        services, _settings, _db = build_services(tmp)
+        services, _settings, _db = build_services(tmp, ollama=True)
         accounts = seed_accounts(services.plaid_repository, 1)
         seed_transactions(services.transactions, accounts, tx_count)
 

@@ -368,13 +368,12 @@ def refresh_month(request: Request, month: str = Form(...), csrf_token: str = Fo
     except PlaidAPIError as exc:
         raise HTTPException(status_code=502, detail=f"Plaid refresh failed: {exc.error_code}") from exc
     services.audit.record("historical_backfill")
-    categorized = services.categorization.categorize_unassigned()
+    services.categorization_worker.request()
     message = (
         f"Refreshed {selected_month}: {result.imported} posted transactions loaded; "
         f"ignored {result.ignored_pending} pending and {result.ignored_payments} payment/autopay"
     )
-    if categorized.memory_paused:
-        message += "; paused categorization (low memory), will finish on next sync"
+    message += ". Categorization queued."
     return RedirectResponse(_home_url(selected_month, message=message), status_code=303)
 
 
@@ -458,6 +457,8 @@ def create_asset(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     services.audit.record("asset_created")
+    if record.classification_pending:
+        services.categorization_worker.request()
     return RedirectResponse(
         _networth_url(f"Added {record.name} to {classification.asset_bucket}"), status_code=303
     )

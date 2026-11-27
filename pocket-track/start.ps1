@@ -1,3 +1,5 @@
+param([switch]$Update, [switch]$Check)
+
 $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -7,11 +9,6 @@ $AppPidFile = Join-Path $Runtime "pockettrack.pid"
 $AppLog = Join-Path $Runtime "pockettrack.log"
 
 $HostnameLocal = "my-pocket-track"
-$Model = if ($env:POCKETTRACK_OLLAMA_MODEL) {
-    $env:POCKETTRACK_OLLAMA_MODEL
-} else {
-    "qwen3.5:4b"
-}
 
 New-Item -ItemType Directory -Force -Path $Runtime | Out-Null
 
@@ -77,29 +74,6 @@ if (-not $Python) {
     }
 }
 
-if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
-    Say "Installing Ollama"
-
-    if (Get-Command winget -ErrorAction SilentlyContinue) {
-        winget install `
-            --id Ollama.Ollama `
-            --exact `
-            --accept-package-agreements `
-            --accept-source-agreements
-    } else {
-        Fail "Ollama is required for local AI. Install Ollama for Windows and rerun .\start.ps1."
-    }
-
-    $OllamaPath = Join-Path $env:LOCALAPPDATA "Programs\Ollama"
-    if (Test-Path $OllamaPath) {
-        $env:PATH = "$OllamaPath;$env:PATH"
-    }
-}
-
-if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
-    Fail "Ollama installation did not complete. Reopen PowerShell and rerun .\start.ps1."
-}
-
 Say "Preparing Python environment"
 
 $Venv = Join-Path $Root ".venv"
@@ -139,7 +113,7 @@ import fastapi
 import uvicorn
 from cardbudget.cli import main
 "@
-        return $true
+        return ($LASTEXITCODE -eq 0)
     } catch {
         return $false
     }
@@ -147,8 +121,8 @@ from cardbudget.cli import main
 
 if (-not (Test-Path $VenvPython)) {
     Create-Venv
-} else {
-    Say "Existing virtual environment found"
+} elseif ($Update) {
+    Say "Updating PocketTrack dependencies"
     Install-Project
 }
 
@@ -174,56 +148,43 @@ print("Package:     OK")
 print("CLI:         OK")
 "@
 
-Say "Starting local AI"
-
-$OllamaReady = $false
-
-try {
-    Invoke-RestMethod `
-        -Uri "http://127.0.0.1:11434/api/tags" `
-        -TimeoutSec 2 | Out-Null
-    $OllamaReady = $true
-} catch {}
-
-if (-not $OllamaReady) {
-    Start-Process `
-        -FilePath "ollama" `
-        -ArgumentList "serve" `
-        -WindowStyle Hidden
-
-    for ($i = 0; $i -lt 20; $i++) {
-        Start-Sleep -Seconds 1
+$Provider = & $VenvPocketTrack categorization-provider
+if ($LASTEXITCODE -ne 0) { Fail "PocketTrack could not read its categorization settings." }
+if ($Provider -eq "ollama") {
+    $Model = & $VenvPocketTrack categorization-provider --model
+    if ($LASTEXITCODE -ne 0) { Fail "PocketTrack could not read its Ollama model." }
+    if (Get-Command ollama -ErrorAction SilentlyContinue) {
         try {
-            Invoke-RestMethod `
-                -Uri "http://127.0.0.1:11434/api/tags" `
-                -TimeoutSec 2 | Out-Null
-            $OllamaReady = $true
-            break
-        } catch {}
+            Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 2 | Out-Null
+        } catch {
+            Start-Process -FilePath "ollama" -ArgumentList "serve" -WindowStyle Hidden
+            for ($i = 0; $i -lt 10; $i++) {
+                Start-Sleep -Seconds 1
+                try {
+                    Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 2 | Out-Null
+                    break
+                } catch {}
+            }
+        }
+        & ollama show $Model 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            if ($Update) {
+                & ollama pull $Model
+                if ($LASTEXITCODE -ne 0) { Write-Warning "Model download failed." }
+            } else {
+                Write-Warning "Run ollama pull $Model or restart with -Update."
+            }
+        }
+    } else {
+        Write-Warning "Install Ollama from ollama.com and run ollama pull $Model to enable local AI."
     }
 }
-
-if ($OllamaReady) {
-    & ollama pull $Model
-} else {
-    Write-Warning "Ollama is not reachable. PocketTrack will continue with manual/heuristic categorization."
+if ($Check) {
+    & $VenvPython -m pytest -q -p no:cacheprovider (Join-Path $Root "tests")
+    if ($LASTEXITCODE -ne 0) { Fail "PocketTrack tests failed." }
+    & $VenvPocketTrack doctor
+    if ($LASTEXITCODE -ne 0) { Fail "PocketTrack diagnostics failed." }
 }
-
-Say "Verifying PocketTrack installation"
-
-& $VenvPython -c @"
-import cardbudget
-from cardbudget.app import create_app
-from cardbudget.cli import main
-
-print("PocketTrack application import: OK")
-"@
-
-Say "Running tests"
-& $VenvPython -m pytest -q (Join-Path $Root "tests")
-
-Say "Running security diagnostics"
-& $VenvPocketTrack doctor
 
 Say "Preparing private local hostname"
 
@@ -257,8 +218,6 @@ Say "Starting PocketTrack application"
 if (-not $env:POCKETTRACK_PLAID_ENVIRONMENT) {
     $env:POCKETTRACK_PLAID_ENVIRONMENT = "production"
 }
-
-$env:POCKETTRACK_OLLAMA_MODEL = $Model
 
 $Running = $false
 

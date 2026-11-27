@@ -136,7 +136,7 @@ def build_plist(settings: Settings, *, hours=DEFAULT_SYNC_HOURS) -> dict:
         "POCKETTRACK_HOST": "127.0.0.1",
         "POCKETTRACK_DATA_DIR": str(settings.data_dir),
         "POCKETTRACK_PLAID_ENVIRONMENT": settings.plaid_environment,
-        "POCKETTRACK_OLLAMA_MODEL": settings.ollama_model,
+        "POCKETTRACK_CATEGORIZATION_PACE_SECONDS": str(settings.categorization_pace_seconds),
         "PYTHONPATH": _import_root(),
     }
     return {

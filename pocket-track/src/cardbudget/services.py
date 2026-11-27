@@ -3,8 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from cardbudget.auth.service import AuthService
+from cardbudget.categorization.chatgpt import ChatGPTConnection
 from cardbudget.categorization.ollama import OllamaClassifierClient
+from cardbudget.categorization.profiles import ProviderProfiles
 from cardbudget.categorization.service import CategorizationService
+from cardbudget.categorization.worker import CategorizationWorker
 from cardbudget.config import Settings
 from cardbudget.db.engine import Database, ensure_private_directory
 from cardbudget.db.repositories import (
@@ -54,6 +57,9 @@ class ApplicationServices:
     plaid: PlaidService
     categorization: CategorizationService
     ollama: OllamaClassifierClient
+    providers: ProviderProfiles
+    categorization_worker: CategorizationWorker
+    chatgpt: ChatGPTConnection
     networth_repository: NetWorthRepository
     networth: NetWorthService
 
@@ -92,6 +98,24 @@ def bootstrap_services(
                 "Otherwise restore a backup, or move the file aside to start fresh:\n"
                 f"  mv {settings.database_path} {settings.database_path}.orphaned"
             ) from exc
+        if database_existed:
+            # The key is present but does not decrypt this file. Distinct from
+            # DatabaseKeyMissing (no key at all) and from a first run, and it
+            # was previously indistinguishable from any other open failure.
+            # Most often a keychain entry from a different install, or a
+            # database copied between machines without its key.
+            raise DatabaseOpenError(
+                f"{settings.database_path} exists and a key is present in the OS keychain "
+                f"(service {settings.keychain_service!r}, account {DB_KEY_NAME!r}), but that "
+                "key does not decrypt this database.\n"
+                "That usually means the file and the key came from different installs - for "
+                "example a database copied from another Mac, or a keychain entry left behind "
+                "by an earlier setup.\n"
+                "If this database holds no data you need, move it aside and start fresh:\n"
+                f"  mv {settings.database_path} {settings.database_path}.orphaned\n"
+                "Otherwise restore a backup, or recover the matching keychain entry.\n"
+                f"Original failure: {exc}"
+            ) from exc
         raise
 
     users = UserRepository(db)
@@ -119,10 +143,13 @@ def bootstrap_services(
         transactions=transactions,
         buckets=buckets,
         merchant_rules=merchant_rules,
-        llm=ollama,
+        llm=ollama_client or (ollama if settings.categorization_default == "ollama" else None),
         pace_seconds=settings.categorization_pace_seconds,
     )
-    networth = NetWorthService(networth_repository, ollama)
+    networth = NetWorthService(networth_repository, ollama_client)
+    providers = ProviderProfiles(db, store, settings, ollama)
+    chatgpt = ChatGPTConnection(db)
+    worker = CategorizationWorker(categorization, providers, networth_repository, chatgpt)
 
     return ApplicationServices(
         settings=settings,
@@ -154,6 +181,9 @@ def bootstrap_services(
         plaid=plaid,
         categorization=categorization,
         ollama=ollama,
+        providers=providers,
+        categorization_worker=worker,
+        chatgpt=chatgpt,
         networth_repository=networth_repository,
         networth=networth,
     )

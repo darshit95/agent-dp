@@ -10,6 +10,8 @@ import uvicorn
 
 from cardbudget.app import create_app
 from cardbudget.backup import BackupError, BackupService
+from cardbudget.categorization.ollama import OllamaClassifierClient
+from cardbudget.categorization.profiles import PROVIDER_LABELS, CategorizationProfile, ProviderProfiles
 from cardbudget.config import Settings
 from cardbudget.db.engine import Database
 from cardbudget.errors import CardBudgetError
@@ -17,6 +19,7 @@ from cardbudget.plaid.client import PlaidAPIError
 from cardbudget.scheduler import autostart as app_autostart
 from cardbudget.scheduler import health as app_health
 from cardbudget.scheduler import macos as macos_scheduler
+from cardbudget.security.keychain import DB_KEY_NAME, OSKeychain
 from cardbudget.services import bootstrap_services
 
 
@@ -28,6 +31,8 @@ def _build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, default=None, help="Loopback port (default 8000)")
 
     sub.add_parser("doctor", help="Run non-secret security and dependency checks")
+    provider = sub.add_parser("categorization-provider", help="Print the active categorization provider")
+    provider.add_argument("--model", action="store_true", help="Print the active model ID instead")
     sub.add_parser("verify-encryption", help="Verify the DB rejects plaintext SQLite and a wrong SQLCipher key")
     sub.add_parser("daily-sync", help="Sync posted Plaid transactions and categorize them")
     sub.add_parser("monthly-sync", help="Compatibility alias for daily-sync")
@@ -83,6 +88,17 @@ def _wrong_key_is_rejected(database: Database) -> bool:
         conn.close()
 
 
+def _installed_provider(settings: Settings) -> CategorizationProfile:
+    if settings.database_path.is_file():
+        store = OSKeychain(settings.keychain_service)
+        key = store.get_secret(DB_KEY_NAME)
+        if key:
+            database = Database(settings.database_path, key)
+            return ProviderProfiles(database, store, settings, OllamaClassifierClient(settings.ollama_model)).get()
+    provider = settings.categorization_default
+    return CategorizationProfile(provider=provider, model=settings.ollama_model if provider == "ollama" else "")
+
+
 def _doctor(settings: Settings) -> int:
     services = bootstrap_services(settings)
     db = services.database
@@ -99,18 +115,9 @@ def _doctor(settings: Settings) -> int:
     for name, ok, detail in checks:
         print(f"{'PASS' if ok else 'FAIL'}  {name}: {detail}")
         failed = failed or not ok
-    ollama_reachable, model_installed = services.ollama.status()
-    ram_note = ""
-    try:
-        import psutil
-
-        ram_note = f"; system has {psutil.virtual_memory().total / (1024 ** 3):.1f} GB RAM"
-    except Exception:
-        pass
-    print(
-        f"{'PASS' if ollama_reachable and model_installed else 'INFO'}  Local AI: "
-        f"{'ready' if ollama_reachable and model_installed else 'not ready'} ({settings.ollama_model}{ram_note})"
-    )
+    profile = services.providers.get()
+    model = f" ({profile.model})" if profile.model else ""
+    print(f"INFO  Categorization: {PROVIDER_LABELS[profile.provider]}{model}; {services.categorization_worker.status()}")
     print(f"INFO  Plaid {settings.plaid_environment}: {'configured' if services.plaid.credentials_configured() else 'not configured'}")
     scheduler = macos_scheduler.status()
     print(f"INFO  Daily scheduler: {'loaded' if scheduler.loaded else ('installed, not loaded' if scheduler.installed else 'not installed')}")
@@ -146,8 +153,7 @@ def _daily_sync(settings: Settings) -> int:
         print(f"Plaid sync failed: {exc.error_code}", file=sys.stderr)
         return 4
     services.audit.record("transactions_synced")
-    categorized = services.categorization.categorize_unassigned()
-    services.audit.record("categorization_run")
+    services.categorization_worker.request()
     print(
         "SYNC  "
         f"items={sync.items_synced} failed={sync.failed_items} added={sync.added} modified={sync.modified} "
@@ -155,15 +161,7 @@ def _daily_sync(settings: Settings) -> int:
         f"ignored_pending={sync.ignored_pending} ignored_payments={sync.ignored_payments} "
         f"ignored_deleted={sync.ignored_deleted}"
     )
-    print(
-        "CATEGORIZATION  "
-        f"rules={categorized.rule_applied} local_llm={categorized.llm_applied} "
-        f"uncategorized={categorized.left_uncategorized}"
-    )
-    if categorized.ollama_unavailable:
-        print("INFO  Ollama was unavailable; transactions remain available for manual categorization.")
-    if categorized.memory_paused:
-        print("INFO  Paused local categorization early due to low system memory; remainder will run on the next sync.")
+    print("CATEGORIZATION  queued for the PocketTrack app worker")
     return 0
 
 
@@ -181,16 +179,14 @@ def _backfill(settings: Settings, month: str) -> int:
         print(str(exc), file=sys.stderr)
         return 3
     services.audit.record("historical_backfill")
-    categorized = services.categorization.categorize_unassigned()
+    services.categorization_worker.request()
     print(
         "BACKFILL  "
         f"month={result.month} imported={result.imported} failed={result.failed_items} "
         f"ignored_pending={result.ignored_pending} ignored_payments={result.ignored_payments} "
         f"ignored_deleted={result.ignored_deleted}"
     )
-    print(f"CATEGORIZATION  rules={categorized.rule_applied} local_llm={categorized.llm_applied} unknown={categorized.left_uncategorized}")
-    if categorized.memory_paused:
-        print("INFO  Paused local categorization early due to low system memory; remainder will run on the next sync.")
+    print("CATEGORIZATION  queued for the PocketTrack app worker")
     return 0
 
 
@@ -209,6 +205,10 @@ def main(argv: list[str] | None = None) -> None:
                 server_header=False,
                 proxy_headers=False,
             )
+            return
+        if args.command == "categorization-provider":
+            profile = _installed_provider(settings)
+            print(profile.model if args.model else profile.provider)
             return
         if args.command == "doctor":
             raise SystemExit(_doctor(settings))
@@ -249,7 +249,11 @@ def main(argv: list[str] | None = None) -> None:
             print("Autostart removed; PocketTrack is stopped." if removed else "Autostart was not installed.")
             return
         if args.command == "status":
-            raise SystemExit(app_health.report(settings))
+            try:
+                profile = _installed_provider(settings)
+            except CardBudgetError:
+                profile = None
+            raise SystemExit(app_health.report(settings, profile))
         if args.command == "autostart-status":
             state = app_autostart.status()
             print(f"{'INSTALLED' if state.installed else 'NOT INSTALLED'}  {state.plist_path}")

@@ -3,6 +3,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
+from cardbudget.categorization.profiles import API_KEYS, PROVIDER_LABELS
+from cardbudget.categorization.worker import JOB_MESSAGES
 from cardbudget.plaid.client import PlaidAPIError
 from cardbudget.scheduler import macos as macos_scheduler
 
@@ -41,7 +43,7 @@ def settings_page(request: Request):
         return RedirectResponse("/setup", status_code=303)
     if not context:
         return RedirectResponse("/login", status_code=303)
-    ollama_reachable, ollama_model_installed = services.ollama.status()
+    ai_profile = services.providers.get()
     items = services.plaid_repository.list_active_items(services.plaid.environment)
     accounts = services.plaid_repository.list_accounts(services.plaid.environment)
     bank_groups = []
@@ -57,9 +59,14 @@ def settings_page(request: Request):
             "credentials_configured": services.plaid.credentials_configured(),
             "bank_groups": bank_groups,
             "message": request.query_params.get("message"),
-            "ollama_reachable": ollama_reachable,
-            "ollama_model_installed": ollama_model_installed,
-            "ollama_model": services.settings.ollama_model,
+            "ai_profile": ai_profile,
+            "provider_labels": PROVIDER_LABELS,
+            "ai_status": services.categorization_worker.status(),
+            "ai_status_messages": JOB_MESSAGES,
+            "ai_account": services.chatgpt.account() if ai_profile.provider == "chatgpt" else None,
+            "ai_key_saved": bool(services.secret_store.get_secret(API_KEYS[ai_profile.provider])) if ai_profile.provider in API_KEYS else False,
+            "ai_last_test": services.providers.last_test(),
+            "has_legacy_unknown": services.transactions.has_legacy_unknown(),
             "scheduler_status": macos_scheduler.status(),
             "minimum_password_length": services.settings.password_min_length,
         },
@@ -198,18 +205,12 @@ def sync_now(request: Request, csrf_token: str = Form(...)):
     except PlaidAPIError as exc:
         raise HTTPException(status_code=502, detail=f"Plaid sync failed: {exc.error_code}") from exc
     services.audit.record("transactions_synced")
-    categorized = services.categorization.categorize_unassigned()
-    services.audit.record("categorization_run")
+    services.categorization_worker.request()
     message = (
         f"Sync complete: {result.added} added, {result.modified} modified, {result.removed} removed"
         + (f", {result.failed_items} connection(s) need attention" if result.failed_items else "")
-        + "; "
-        f"categorized {categorized.rule_applied + categorized.llm_applied}"
+        + ". Categorization queued."
     )
-    if categorized.ollama_unavailable:
-        message += "; Ollama unavailable"
-    if categorized.memory_paused:
-        message += "; paused categorization (low memory), will finish on next sync"
     from urllib.parse import quote_plus
     return RedirectResponse(f"/settings?message={quote_plus(message)}", status_code=303)
 
